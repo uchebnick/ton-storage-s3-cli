@@ -8,7 +8,7 @@ import (
 )
 
 var KnownProviders = []string{
-	"EQDJlWIX-7HcN-7RqDhFhpuCfbHLruOMJ2p4hKKr_AN7_R9S",
+	"c9956217fbb1dc37eed1a83845869b827db1cbaee38c276a7884a2abfc037bfd",
 }
 
 func (s *Service) FindRandomProvider(ctx context.Context, exclude []string) (string, error) {
