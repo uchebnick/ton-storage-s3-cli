@@ -1,43 +1,33 @@
 version: '3.8'
 
 services:
-  # --- Основное приложение (Go) ---
   app:
     build: .
     container_name: ton-storage-s3
     restart: unless-stopped
     ports:
-      - "8080:8080"       # S3 Gateway
-      - "3000:3000"       # Admin API
-      - "14321:14321/udp" # TON Node P2P (Важно для скачивания/раздачи)
+      - "8080:8080"
+      - "3000:3000"
+      - "14321:14321/udp"
     environment:
-      # Настройки подключения к БД (хост 'postgres', а не localhost)
+      - SERVER_PORT=:8080
       - DB_URL=postgres://user:password@postgres:5432/ton_storage?sslmode=disable
-      
-      # Настройки TON
       - TON_CONFIG_URL=https://ton.org/global.config.json
-      # Секрет берется из файла .env рядом с docker-compose
-      - WALLET_SEED=${WALLET_SEED}
       
-      # Пути внутри контейнера (соответствуют Dockerfile)
       - INTERNAL_DB_PATH=/root/var/ton-db
       - DOWNLOADS_PATH=/root/var/downloads
       
-      # Настройки приложения
-      - SERVER_PORT=:8080
-      - DEFAULT_REPLICAS=3
       - REPLICATOR_WORKERS=5
       - AUDITOR_WORKERS=3
+      - DEFAULT_REPLICAS=3
+      
+      - WALLET_SEED=${WALLET_SEED}
     volumes:
-      # Персистентное хранилище для базы TON (LevelDB)
       - ton_db_data:/root/var/ton-db
-      # Персистентное хранилище для скачанных файлов (Кэш)
       - downloads_data:/root/var/downloads
     depends_on:
-      postgres:
-        condition: service_healthy # <--- ВАЖНО: Ждем, пока БД создаст таблицы
+      - postgres
 
-  # --- База данных (PostgreSQL) ---
   postgres:
     image: postgres:15-alpine
     container_name: ton-postgres
@@ -47,19 +37,10 @@ services:
       POSTGRES_PASSWORD: password
       POSTGRES_DB: ton_storage
     volumes:
-      # Данные базы
       - pg_data:/var/lib/postgresql/data
-      # Скрипт инициализации (создание таблиц)
       - ./schema.sql:/docker-entrypoint-initdb.d/init.sql
     ports:
-      - "5432:5432" # Доступ снаружи для администрирования (DBeaver и т.д.)
-    
-    # Проверка здоровья: Docker будет пинговать базу каждые 5 секунд
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U user -d ton_storage"]
-      interval: 5s
-      timeout: 5s
-      retries: 5
+      - "5432:5432"
 
 volumes:
   pg_data:
