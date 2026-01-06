@@ -1,0 +1,83 @@
+name: Release Pipeline
+
+on:
+  push:
+    branches: [ "main" ]
+    # Триггеримся на теги v1.0.0, v2.3.4 и т.д.
+    tags: [ "v*.*.*" ]
+  pull_request:
+    branches: [ "main" ]
+
+env:
+  IMAGE_NAME: uuuchebnick/ton-storage-s3-cli
+
+jobs:
+  # 1. Проверка качества
+  quality-check:
+    name: Code Quality
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.25.3'
+
+          cache: false
+
+      - uses: golangci/golangci-lint-action@v9
+        with:
+          version: latest
+          args: --timeout=5m
+
+  # 2. Сборка и Пуш
+  build-and-push:
+    name: Docker Release
+    runs-on: ubuntu-latest
+    needs: quality-check
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to Docker Hub
+        # Логинимся только если это тег (релиз)
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.IMAGE_NAME }}
+          tags: |
+            # 1. Семантические версии (1.0.0, 1.0)
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            
+            # 2. Тег 'latest' ставим ТОЛЬКО если это релизный тег (auto)
+            # По умолчанию type=semver,pattern={{version}} сам не ставит latest,
+            # поэтому используем type=raw с условием или type=semver c priority.
+            # Самый надежный способ для релизов:
+            type=raw,value=latest,enable=${{ startsWith(github.ref, 'refs/tags/') }}
+            
+            # 3. SHA коммита (полезно для отладки, пушится всегда)
+            type=sha,format=long
+
+      - name: Build and Push
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: Dockerfile
+          # Пушим только если это тег
+          push: ${{ startsWith(github.ref, 'refs/tags/') }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
