@@ -2,7 +2,7 @@ package daemons
 
 import (
 	"context"
-	"encoding/hex"	// <--- Добавлен импорт
+	"encoding/hex"
 	"log"
 	"math/big"
 	"math/rand"

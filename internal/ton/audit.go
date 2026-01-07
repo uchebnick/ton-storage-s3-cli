@@ -17,7 +17,7 @@ import (
 
 type ProviderReport struct {
 	IsHealthy	bool
-	Status		string	// "active", "error", "failed", "outdated"
+	Status		string
 	FailureReason	string
 	LastProofAt	time.Time
 	Balance		*big.Int
@@ -74,8 +74,16 @@ func (s *Service) AuditProvider(ctx context.Context, bagIdStr, providerAddrStr s
 
 	maxSpan := time.Duration(targetProvider.MaxSpan) * time.Second
 	lastProofAgo := time.Since(targetProvider.LastProofAt)
-
 	allowedDelay := maxSpan + (maxSpan / 10)
+
+	if targetProvider.LastProofAt.Unix() == 0 {
+         return &ProviderReport{
+            IsHealthy:     false,
+            Status:        "no_proofs",
+            LastProofAt:   time.Now(),
+            FailureReason: "No proofs submitted yet (download stuck?)",
+        }, nil
+    }
 
 	if lastProofAgo > allowedDelay {
 		return &ProviderReport{

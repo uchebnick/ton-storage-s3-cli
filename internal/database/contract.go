@@ -22,14 +22,15 @@ func (db *DB) UpdateContractCheck(ctx context.Context, contractID int64) error {
 
 func (db *DB) GetActiveContracts(ctx context.Context, totalWorkers, workerID int) ([]ContractWithMeta, error) {
 	query := `
-        SELECT c.id, c.file_id, c.provider_addr, c.contract_addr, c.balance_nano_ton, c.last_check, f.bag_id
-        FROM contracts c
-        JOIN files f ON c.file_id = f.id
-        WHERE c.status = 'active' 
-          AND c.id % $1 = $2
-        ORDER BY c.last_check ASC 
-        LIMIT 50
-    `
+		SELECT c.id, c.file_id, c.provider_addr, c.contract_addr, c.balance_nano_ton, c.last_check, f.bag_id
+		FROM contracts c
+		JOIN files f ON c.file_id = f.id
+		WHERE c.status = 'active' 
+		  AND c.created_at < NOW() - INTERVAL '30 minutes'
+		  AND c.id % $1 = $2
+		ORDER BY c.last_check ASC 
+		LIMIT 20
+	`
 	rows, err := db.pool.Query(ctx, query, totalWorkers, workerID)
 	if err != nil {
 		return nil, err

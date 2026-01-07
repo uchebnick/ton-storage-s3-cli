@@ -6,8 +6,8 @@ import (
 	"log"
 	"time"
 
-	"ton-storage-s3-cli/internal/database"	// Замените на ваш путь к пакету database
-	"ton-storage-s3-cli/internal/ton"	// Замените на ваш путь к пакету ton
+	"ton-storage-s3-cli/internal/database"
+	"ton-storage-s3-cli/internal/ton"
 )
 
 func RunAuditorWorker(ctx context.Context, workerID int, totalWorkers int, db *database.DB, tonSvc *ton.Service) {
