@@ -2,7 +2,10 @@ package api
 
 import (
 	"encoding/hex"
+	"fmt"
 	"log"
+	"os"
+	"path/filepath"
 	"strconv"
 
 	"ton-storage-s3-cli/internal/database"
@@ -15,23 +18,26 @@ import (
 )
 
 type AdminServer struct {
-	app	*fiber.App
-	db	*database.DB
-	tonSvc	*ton.Service
+	app    *fiber.App
+	db     *database.DB
+	tonSvc *ton.Service
 }
 
 func NewAdminServer(db *database.DB, tonSvc *ton.Service) *AdminServer {
 	app := fiber.New(fiber.Config{
 		DisableStartupMessage: true,
+		BodyLimit:             500 * 1024 * 1024,
 	})
 
 	app.Use(logger.New())
 	app.Use(cors.New())
 
+	app.Static("/", "./web")
+
 	s := &AdminServer{
-		app:	app,
-		db:	db,
-		tonSvc:	tonSvc,
+		app:    app,
+		db:     db,
+		tonSvc: tonSvc,
 	}
 
 	s.registerRoutes()
@@ -49,6 +55,8 @@ func (s *AdminServer) registerRoutes() {
 	v1.Get("/files", s.listFiles)
 	v1.Get("/files/:id", s.getFileDetails)
 
+	v1.Post("/upload", s.uploadFile)
+	v1.Get("/files/:id/download", s.downloadFile)
 	v1.Post("/files/:id/restore", s.restoreFile)
 	v1.Post("/files/:id/replicate", s.manualReplicate)
 
@@ -81,9 +89,79 @@ func (s *AdminServer) getFileDetails(c *fiber.Ctx) error {
 	}
 
 	return c.JSON(fiber.Map{
-		"file":		file,
-		"contracts":	contracts,
+		"file":      file,
+		"contracts": contracts,
 	})
+}
+
+func (s *AdminServer) uploadFile(c *fiber.Ctx) error {
+	fileHeader, err := c.FormFile("file")
+	if err != nil {
+		return c.Status(400).JSON(fiber.Map{"error": "File is required"})
+	}
+
+	bucket := c.FormValue("bucket", "default")
+	replicas, _ := strconv.Atoi(c.FormValue("replicas", "3"))
+
+	if exists, _ := s.db.BucketExists(c.Context(), bucket); !exists {
+		s.db.CreateBucket(c.Context(), bucket)
+	}
+
+	uploadDir := "./var/downloads"
+	os.MkdirAll(uploadDir, 0755)
+
+	localPath := filepath.Join(uploadDir, fileHeader.Filename)
+	if err := c.SaveFile(fileHeader, localPath); err != nil {
+		return c.Status(500).JSON(fiber.Map{"error": "Failed to save file: " + err.Error()})
+	}
+
+	bagIDBytes, err := s.tonSvc.CreateBag(c.Context(), localPath)
+	if err != nil {
+		return c.Status(500).JSON(fiber.Map{"error": "TON CreateBag failed: " + err.Error()})
+	}
+	bagIDHex := hex.EncodeToString(bagIDBytes)
+
+	newFile := &database.File{
+		BucketName:     bucket,
+		ObjectKey:      fileHeader.Filename,
+		BagID:          bagIDHex,
+		SizeBytes:      fileHeader.Size,
+		TargetReplicas: replicas,
+		Status:         "pending",
+	}
+
+	id, err := s.db.CreateFile(c.Context(), newFile)
+	if err != nil {
+		return c.Status(500).JSON(fiber.Map{"error": "DB Insert failed: " + err.Error()})
+	}
+
+	return c.Status(201).JSON(fiber.Map{
+		"id":     id,
+		"bag_id": bagIDHex,
+		"status": "created",
+		"path":   localPath,
+	})
+}
+
+func (s *AdminServer) downloadFile(c *fiber.Ctx) error {
+	id, _ := strconv.ParseInt(c.Params("id"), 10, 64)
+
+	file, err := s.db.GetFileByID(c.Context(), id)
+	if err != nil {
+		return c.Status(404).SendString("File not found in DB")
+	}
+
+	bagBytes, _ := hex.DecodeString(file.BagID)
+
+	filePath, err := s.tonSvc.GetPathToBagFile(bagBytes, file.ObjectKey)
+	if err != nil {
+		return c.Status(404).JSON(fiber.Map{
+			"error": "File missing on server disk. Use /restore endpoint first.",
+		})
+	}
+
+	c.Set("Content-Disposition", fmt.Sprintf(`attachment; filename="%s"`, file.ObjectKey))
+	return c.SendFile(filePath)
 }
 
 func (s *AdminServer) restoreFile(c *fiber.Ctx) error {
@@ -105,7 +183,11 @@ func (s *AdminServer) restoreFile(c *fiber.Ctx) error {
 		}
 	}()
 
-	return c.JSON(fiber.Map{"status": "restore_started", "bag_id": file.BagID})
+	return c.JSON(fiber.Map{
+		"status":  "restore_started",
+		"message": "Server is downloading file from TON network. Please wait.",
+		"bag_id":  file.BagID,
+	})
 }
 
 func (s *AdminServer) manualReplicate(c *fiber.Ctx) error {
@@ -136,19 +218,15 @@ func (s *AdminServer) manualReplicate(c *fiber.Ctx) error {
 	}
 
 	newC := &database.Contract{
-		FileID:		f.ID,
-		ProviderAddr:	newProvider,
-		ContractAddr:	contractAddr,
-		BalanceNano:	amount.Nano().Int64(),
-		Status:		"active",
+		FileID:       f.ID,
+		ProviderAddr: newProvider,
+		ContractAddr: contractAddr,
+		BalanceNano:  amount.Nano().Int64(),
+		Status:       "active",
 	}
 	s.db.RegisterContract(c.Context(), newC)
 
-	return c.JSON(fiber.Map{
-		"status":	"hired",
-		"provider":	newProvider,
-		"contract":	contractAddr,
-	})
+	return c.JSON(fiber.Map{"status": "hired", "provider": newProvider, "contract": contractAddr})
 }
 
 func (s *AdminServer) auditContract(c *fiber.Ctx) error {
