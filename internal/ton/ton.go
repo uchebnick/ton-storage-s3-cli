@@ -338,3 +338,17 @@ func (s *Service) GetPathToBagFile(bagID []byte, filename string) (string, error
 
 	return "", os.ErrNotExist
 }
+
+func (s *Service) GetTorrentStats(bagID []byte) (uploadSpeed uint64, uploadedTotal uint64, err error) {
+	tor := s.storage.GetTorrent(bagID)
+	if tor == nil {
+		return 0, 0, fmt.Errorf("torrent not found")
+	}
+
+	peers := tor.GetPeers()
+	for _, p := range peers {
+		uploadSpeed += p.GetUploadSpeed()
+	}
+	
+	return uploadSpeed, tor.GetUploadStats(), nil
+}

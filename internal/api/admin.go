@@ -59,9 +59,11 @@ func (s *AdminServer) registerRoutes() {
 	v1.Get("/files/:id/download", s.downloadFile)
 	v1.Post("/files/:id/restore", s.restoreFile)
 	v1.Post("/files/:id/replicate", s.manualReplicate)
+	v1.Get("/files/:id/stats", s.getFileStats)
 
 	v1.Get("/contracts/:id/audit", s.auditContract)
 	v1.Post("/contracts/:id/withdraw", s.withdrawContract)
+
 }
 
 func (s *AdminServer) listFiles(c *fiber.Ctx) error {
@@ -259,4 +261,21 @@ func (s *AdminServer) withdrawContract(c *fiber.Ctx) error {
 	}
 
 	return c.JSON(fiber.Map{"status": "success", "tx_hash": txHash})
+}
+
+func (s *AdminServer) getFileStats(c *fiber.Ctx) error {
+	id, _ := strconv.ParseInt(c.Params("id"), 10, 64)
+	file, err := s.db.GetFileByID(c.Context(), id)
+	if err != nil {
+		return c.Status(404).JSON(fiber.Map{"error": "Not found"})
+	}
+
+	bagBytes, _ := hex.DecodeString(file.BagID)
+	speed, total, err := s.tonSvc.GetTorrentStats(bagBytes)
+	
+	return c.JSON(fiber.Map{
+		"upload_speed": speed,
+		"uploaded_total": total,
+		"file_size": file.SizeBytes,
+	})
 }
