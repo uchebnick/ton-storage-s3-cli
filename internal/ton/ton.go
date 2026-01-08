@@ -245,19 +245,24 @@ func (s *Service) DownloadBag(ctx context.Context, bagID []byte) error {
 	bagHex := hex.EncodeToString(bagID)
 
 	tor := s.storage.GetTorrent(bagID)
+
 	if tor == nil {
 
-		downloadDir := filepath.Join(s.config.DownloadsPath, bagHex)
-		os.MkdirAll(downloadDir, 0755)
+		savePath := filepath.Join(s.config.DownloadsPath, bagHex)
+		
+		if err := os.MkdirAll(savePath, 0755); err != nil {
+			return fmt.Errorf("failed to create dir: %w", err)
+		}
 
-		tor = storage.NewTorrent(downloadDir, s.storage, s.connector)
+		tor = storage.NewTorrent(savePath, s.storage, s.connector)
 		tor.BagID = bagID
 
 		if err := tor.Start(true, true, false); err != nil {
-			return fmt.Errorf("failed to start torrent: %w", err)
+			return fmt.Errorf("failed to start new torrent: %w", err)
 		}
+
 		if err := s.storage.SetTorrent(tor); err != nil {
-			return fmt.Errorf("failed to save torrent to db: %w", err)
+			return fmt.Errorf("failed to set torrent to storage: %w", err)
 		}
 	} else {
 
@@ -265,6 +270,7 @@ func (s *Service) DownloadBag(ctx context.Context, bagID []byte) error {
 			return fmt.Errorf("failed to restart torrent: %w", err)
 		}
 	}
+
 	return nil
 }
 
@@ -295,10 +301,10 @@ func parseAddressAny(addrStr string) (*address.Address, error) {
 
 func (s *Service) WaitForFile(ctx context.Context, bagID []byte, filename string) (string, error) {
 	bagHex := hex.EncodeToString(bagID)
-
+	
 	targetPath := filepath.Join(s.config.DownloadsPath, bagHex, filename)
 
-	timeoutCtx, cancel := context.WithTimeout(ctx, 60*time.Second)
+	timeoutCtx, cancel := context.WithTimeout(ctx, 10*time.Minute)
 	defer cancel()
 
 	ticker := time.NewTicker(500 * time.Millisecond)
@@ -309,8 +315,8 @@ func (s *Service) WaitForFile(ctx context.Context, bagID []byte, filename string
 		case <-timeoutCtx.Done():
 			return "", fmt.Errorf("timeout waiting for file download: %s", filename)
 		case <-ticker.C:
-
-			if _, err := os.Stat(targetPath); err == nil {
+			info, err := os.Stat(targetPath)
+			if err == nil && info.Size() > 0 {
 				return targetPath, nil
 			}
 		}
