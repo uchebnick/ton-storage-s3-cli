@@ -236,7 +236,7 @@ func (b *TonBackend) PutObject(
 	}
 	bagIDHex := hex.EncodeToString(bagIDBytes)
 
-	targetReplicas := 3
+	targetReplicas := 1
 	if val, ok := meta["replicas"]; ok {
 		if n, err := strconv.Atoi(val); err == nil && n > 0 {
 			targetReplicas = n
