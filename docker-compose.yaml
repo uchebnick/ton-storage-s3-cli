@@ -30,7 +30,7 @@ services:
       - WALLET_SEED=${WALLET_SEED}
       
       # !!! ВАЖНО: Передаем внешний IP, чтобы сообщить его в DHT !!!
-      - PUBLIC_IP=${PUBLIC_IP}
+      - EXTERNAL_IP=${EXTERNAL_IP}
       
     volumes:
       - ton_db_data:/root/var/ton-db
