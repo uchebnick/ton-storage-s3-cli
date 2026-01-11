@@ -1,23 +1,24 @@
 package ton
 
 import (
-	"bytes"
 	"context"
 	"crypto/ed25519"
 	"encoding/hex"
-	"errors"
 	"fmt"
 	"log"
+	"net"
 	"os"
 	"path/filepath"
 	"strings"
 	"time"
+	"errors"
+	"bytes"
 
 	"github.com/syndtr/goleveldb/leveldb"
 	"github.com/syndtr/goleveldb/leveldb/opt"
 	"github.com/xssnick/tonutils-go/address"
 	"github.com/xssnick/tonutils-go/adnl"
-	"github.com/xssnick/tonutils-storage-provider/pkg/transport"
+	adnlAddress "github.com/xssnick/tonutils-go/adnl/address"
 	"github.com/xssnick/tonutils-go/adnl/dht"
 	"github.com/xssnick/tonutils-go/liteclient"
 	"github.com/xssnick/tonutils-go/tlb"
@@ -25,6 +26,7 @@ import (
 	"github.com/xssnick/tonutils-go/ton/wallet"
 	"github.com/xssnick/tonutils-go/tvm/cell"
 	"github.com/xssnick/tonutils-storage-provider/pkg/contract"
+	"github.com/xssnick/tonutils-storage-provider/pkg/transport"
 	"github.com/xssnick/tonutils-storage/config"
 	"github.com/xssnick/tonutils-storage/db"
 	"github.com/xssnick/tonutils-storage/provider"
@@ -41,19 +43,23 @@ type Service struct {
 	config		*config.Config
 }
 
-func NewService(ctx context.Context, seedPhrase string, internalDBPath string, downloadsPath string) (*Service, error) {
-	storage.Logger = func(v ...any) {}
+func NewService(ctx context.Context, seedPhrase string, internalDBPath string, downloadsPath string, publicIP string) (*Service, error) {
+	storage.Logger = log.Println
 
 	cfg, err := config.LoadConfig(internalDBPath)
 	if err != nil {
 		_, privKey, _ := ed25519.GenerateKey(nil)
 		cfg = &config.Config{
-			Key:		privKey,
-			ListenAddr:	"0.0.0.0:14321",
-			DownloadsPath:	downloadsPath,
+			Key:           privKey,
+			ListenAddr:    "0.0.0.0:14321",
+			DownloadsPath: downloadsPath,
 		}
 	}
 	cfg.DownloadsPath = downloadsPath
+	
+	if publicIP != "" {
+		cfg.ExternalIP = publicIP
+	}
 
 	lsCfg, err := liteclient.GetConfigFromUrl(ctx, "https://ton.org/global.config.json")
 	if err != nil {
@@ -65,7 +71,7 @@ func NewService(ctx context.Context, seedPhrase string, internalDBPath string, d
 		return nil, fmt.Errorf("failed to add connections: %w", err)
 	}
 
-	api := ton.NewAPIClient(lc, ton.ProofCheckPolicyFast).WithRetry()
+	api := ton.NewAPIClient(lc, ton.ProofCheckPolicyFast).WithRetry().WithTimeout(60 * time.Second)
 
 	words := strings.Split(seedPhrase, " ")
 	w, err := wallet.FromSeed(api, words, wallet.V4R2)
@@ -79,9 +85,31 @@ func NewService(ctx context.Context, seedPhrase string, internalDBPath string, d
 		return nil, err
 	}
 
+
 	gateway := adnl.NewGateway(cfg.Key)
-	if err := gateway.StartClient(); err != nil {
-		return nil, fmt.Errorf("failed to start adnl gateway: %w", err)
+	
+	if cfg.ExternalIP != "" {
+		ip := net.ParseIP(cfg.ExternalIP)
+		if ip == nil {
+			return nil, fmt.Errorf("invalid external IP in config: %s", cfg.ExternalIP)
+		}
+
+		gateway.SetAddressList([]*adnlAddress.UDP{
+			{
+				IP:   ip,
+				Port: 14321,
+			},
+		})
+
+		if err := gateway.StartServer(cfg.ListenAddr, 12); err != nil {
+			return nil, fmt.Errorf("failed to start adnl server: %w", err)
+		}
+		log.Printf("🚀 ADNL Gateway started in SERVER mode on %s (Ext: %s)", cfg.ListenAddr, cfg.ExternalIP)
+	} else {
+		log.Println("⚠️ ExternalIP not set. Starting in Client mode (Downloads only, No Uploads!)")
+		if err := gateway.StartClient(); err != nil {
+			return nil, fmt.Errorf("failed to start adnl gateway: %w", err)
+		}
 	}
 
 	dhtGateway := adnl.NewGateway(dhtKey)
@@ -94,7 +122,9 @@ func NewService(ctx context.Context, seedPhrase string, internalDBPath string, d
 		return nil, fmt.Errorf("failed to init dht: %w", err)
 	}
 
-	storageServer := storage.NewServer(dhtClient, gateway, cfg.Key, false, 12)
+
+	isServerMode := cfg.ExternalIP != ""
+	storageServer := storage.NewServer(dhtClient, gateway, cfg.Key, isServerMode, 12)
 	connector := storage.NewConnector(storageServer)
 
 	os.MkdirAll(filepath.Join(internalDBPath, "leveldb"), 0755)
@@ -112,17 +142,16 @@ func NewService(ctx context.Context, seedPhrase string, internalDBPath string, d
 	storageServer.SetStorage(store)
 
 	transp := transport.NewClient(dhtGateway, dhtClient)
-
 	provClient := provider.NewClient(store, api, transp)
 
 	return &Service{
-		api:		api,
-		wallet:		w,
-		storage:	store,
-		connector:	connector,
-		providerClient:	provClient,
-		dht:		dhtClient,
-		config:		cfg,
+		api:            api,
+		wallet:         w,
+		storage:        store,
+		connector:      connector,
+		providerClient: provClient,
+		dht:            dhtClient,
+		config:         cfg,
 	}, nil
 }
 

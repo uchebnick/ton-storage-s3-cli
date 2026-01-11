@@ -48,6 +48,7 @@ func main() {
 		cfg.WalletSeed,
 		cfg.InternalDBPath,
 		cfg.DownloadsPath,
+		cfg.ExternalIP,
 	)
 	if err != nil {
 		log.Fatalf("❌ TON Service init failed: %v", err)

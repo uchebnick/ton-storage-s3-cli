@@ -25,6 +25,7 @@ type Config struct {
 	// Настройки Демонов
 	ReplicatorWorkers	int
 	AuditorWorkers		int
+	ExternalIP		string
 }
 
 func LoadConfig() (*Config, error) {
@@ -37,11 +38,12 @@ func LoadConfig() (*Config, error) {
 		WalletSeed:	getEnv("WALLET_SEED", ""),
 		InternalDBPath:	getEnv("INTERNAL_DB_PATH", "./var/ton-storage-db"),
 		DownloadsPath:	getEnv("DOWNLOADS_PATH", "./var/downloads"),
-		ServerPort:	getEnv("SERVER_PORT", ":8080"),
+		ServerPort:		getEnv("SERVER_PORT", ":8080"),
 
 		DefaultReplicas:	getEnvAsInt("DEFAULT_REPLICAS", 3),
 		ReplicatorWorkers:	getEnvAsInt("REPLICATOR_WORKERS", 5),
 		AuditorWorkers:		getEnvAsInt("AUDITOR_WORKERS", 3),
+		ExternalIP:		getEnv("EXTERNAL_IP", "0.0.0.0"),
 	}
 
 	if cfg.WalletSeed == "" {
