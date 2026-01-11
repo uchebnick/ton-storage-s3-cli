@@ -54,6 +54,10 @@ func main() {
 	}
 	log.Println("✅ TON Service initialized")
 
+	if err := tonSvc.StartSeeding(ctx); err != nil {
+		log.Printf("⚠️ Warning: Failed to resume seeding: %v", err)
+	}
+
 	replicatorTask := func(ctx context.Context, id int, total int) {
 		daemons.RunReplicatorWorker(ctx, id, total, db, tonSvc)
 	}

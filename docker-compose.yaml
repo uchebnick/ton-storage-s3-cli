@@ -8,7 +8,7 @@ services:
     ports:
       - "8080:8080"
       - "3000:3000"
-      - "14321:14321/udp"
+      - "14321:14321"
     environment:
       - SERVER_PORT=:8080
       - DB_URL=postgres://user:password@postgres:5432/ton_storage?sslmode=disable

@@ -352,3 +352,19 @@ func (s *Service) GetTorrentStats(bagID []byte) (uploadSpeed uint64, uploadedTot
 	
 	return uploadSpeed, tor.GetUploadStats(), nil
 }
+
+func (s *Service) StartSeeding(ctx context.Context) error {
+	torrents := s.storage.GetAll()
+	
+	count := 0
+	for _, t := range torrents {
+		if err := t.Start(false, true, false); err != nil {
+			log.Printf("⚠️ Failed to resume seeding for bag %s: %v", hex.EncodeToString(t.BagID), err)
+			continue
+		}
+		count++
+	}
+	
+	log.Printf("🚀 Resumed seeding for %d files from database", count)
+	return nil
+}
