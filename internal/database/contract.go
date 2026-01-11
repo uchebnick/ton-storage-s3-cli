@@ -26,7 +26,7 @@ func (db *DB) GetActiveContracts(ctx context.Context, totalWorkers, workerID int
 		FROM contracts c
 		JOIN files f ON c.file_id = f.id
 		WHERE c.status = 'active' 
-		  AND c.created_at < NOW() - INTERVAL '30 minutes'
+		  AND c.created_at < NOW() - INTERVAL '12 hours'
 		  AND c.id % $1 = $2
 		ORDER BY c.last_check ASC 
 		LIMIT 20
