@@ -190,56 +190,60 @@ type BagFullStatus struct {
 	Downloaded    uint64 `json:"downloaded"`
 	FileSize      uint64 `json:"file_size"`
 	Completed     bool   `json:"completed"`
-	Active        bool   `json:"active"`
+	ActiveDownload bool   `json:"active_download"`
+	ActiveUpload   bool   `json:"active_upload"`
 	HeaderLoaded  bool   `json:"header_loaded"`
 }
 
-func (s *Service) GetBagFullStatus(bagID []byte) (*BagFullStatus, error) {
-	tor := s.storage.GetTorrent(bagID)
-	if tor == nil {
-		return nil, fmt.Errorf("torrent not found")
-	}
+// GetAllBagsFullStatus собирает подробную статистику по всем торрентам в ноде
+func (s *Service) GetAllBagsFullStatus() ([]BagFullStatus, error) {
+	torrents := s.storage.GetAll()
+	result := make([]BagFullStatus, 0, len(torrents))
 
-	var dow, upl uint64
-	peers := tor.GetPeers()
-	for _, p := range peers {
-		dow += p.GetDownloadSpeed()
-		upl += p.GetUploadSpeed()
-	}
-
-	active, _ := tor.IsActive()
-	
-	// Расчет прогресса скачивания (аналог логики из getBag)
-	var downloaded uint64
-	completed := false
-	if tor.Info != nil {
-		mask := tor.PiecesMask()
-		downloadedPieces := 0
-		for _, b := range mask {
-			downloadedPieces += bits.OnesCount8(b)
+	for _, t := range torrents {
+		var dow, upl uint64
+		peers := t.GetPeers()
+		for _, p := range peers {
+			dow += p.GetDownloadSpeed()
+			upl += p.GetUploadSpeed()
 		}
+
+		activeDownload, activeUpload := t.IsActive()
 		
-		// Примерный расчет объема данных
-		downloaded = uint64(downloadedPieces * int(tor.Info.PieceSize))
-		if downloaded > tor.Info.FileSize {
-			downloaded = tor.Info.FileSize
+		var downloaded uint64
+		completed := false
+		if t.Info != nil {
+			mask := t.PiecesMask()
+			downloadedPieces := 0
+			for _, b := range mask {
+				downloadedPieces += bits.OnesCount8(b)
+			}
+			downloaded = uint64(downloadedPieces * int(t.Info.PieceSize))
+			if downloaded > t.Info.FileSize {
+				downloaded = t.Info.FileSize
+			}
+			completed = uint32(downloadedPieces) == t.Info.PiecesNum()
 		}
-		completed = uint32(downloadedPieces) == tor.Info.PiecesNum()
+
+		result = append(result, BagFullStatus{
+			BagID:         hex.EncodeToString(t.BagID),
+			Peers:         len(peers),
+			UploadSpeed:   upl,
+			DownloadSpeed: dow,
+			UploadedTotal: t.GetUploadStats(),
+			Downloaded:    downloaded,
+			FileSize:      t.Info.FileSize,
+			Completed:     completed,
+			ActiveDownload:        activeDownload,
+			ActiveUpload:          activeUpload,
+			HeaderLoaded:  t.Header != nil,
+		})
 	}
 
-	return &BagFullStatus{
-		BagID:         hex.EncodeToString(bagID),
-		Peers:         len(peers),
-		UploadSpeed:   upl,
-		DownloadSpeed: dow,
-		UploadedTotal: tor.GetUploadStats(),
-		Downloaded:    downloaded,
-		FileSize:      tor.Info.FileSize,
-		Completed:     completed,
-		Active:        active,
-		HeaderLoaded:  tor.Header != nil,
-	}, nil
+	return result, nil
 }
+
+
 
 func (s *Service) HireProvider(ctx context.Context, bagID []byte, providerAddrStr string, amount tlb.Coins) (string, error) {
 

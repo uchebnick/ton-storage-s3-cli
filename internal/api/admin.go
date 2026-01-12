@@ -69,20 +69,11 @@ func (s *AdminServer) registerRoutes() {
 }
 
 func (s *AdminServer) getBagsStats(c *fiber.Ctx) error {
-	id, _ := strconv.ParseInt(c.Params("id"), 10, 64)
-	file, err := s.db.GetFileByID(c.Context(), id)
-	if err != nil {
-		return c.Status(404).JSON(fiber.Map{"error": "Not found"})
-	}
-
-	bagBytes, _ := hex.DecodeString(file.BagID)
-	
-	stats, err := s.tonSvc.GetBagFullStatus(bagBytes)
+	stats, err := s.tonSvc.GetAllBagsFullStatus()
 	if err != nil {
 		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
 	}
-	
-	return c.JSON(stats)
+	return c.JSON(fiber.Map{"bags": stats})
 }
 
 func (s *AdminServer) listFiles(c *fiber.Ctx) error {
