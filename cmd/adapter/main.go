@@ -75,6 +75,14 @@ func main() {
 	auditorPool.Start()
 	log.Printf("✅ Started Auditor Pool (%d workers)", cfg.AuditorWorkers)
 
+	pingerTask := func(ctx context.Context, id int, total int) {
+		daemons.RunPingerWorker(ctx, id, total, db, tonSvc)
+	}
+	pingerPool := daemons.NewPool(ctx, cfg.PingerWorkers, pingerTask)
+	pingerPool.Start()
+
+	log.Printf("✅ Started Pinger Pool (%d workers)", cfg.PingerWorkers)
+
 	s3Server := api.NewS3Server(db, tonSvc, cfg.DownloadsPath)
 	adminServer := api.NewAdminServer(db, tonSvc)
 

@@ -489,3 +489,19 @@ func (s *Service) StartSeeding(ctx context.Context) error {
 	log.Printf("🚀 Resumed seeding for %d files from database", count)
 	return nil
 }
+
+func (s *Service) PingProvider(ctx context.Context, bagID []byte, providerKeyHex string) error {
+	provKey, err := hex.DecodeString(providerKeyHex)
+	if err != nil {
+		return fmt.Errorf("invalid provider key hex: %w", err)
+	}
+
+	info, err := s.providerClient.RequestProviderStorageInfo(ctx, bagID, provKey, s.wallet.Address())
+	if err != nil {
+		return err
+	}
+
+	log.Printf("Provider Status: %s", info.Status)
+
+	return nil
+}
