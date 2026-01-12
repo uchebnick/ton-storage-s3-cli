@@ -23,7 +23,7 @@ func RunPingerWorker(ctx context.Context, workerID int, totalWorkers int, db *da
 		default:
 		}
 
-		contracts, err := db.GetActiveContracts(ctx, totalWorkers, workerID)
+		contracts, err := db.GetAllContracts(ctx, totalWorkers, workerID)
 		if err != nil {
 			log.Printf("[Pinger %d] DB Error: %v", workerID, err)
 			continue

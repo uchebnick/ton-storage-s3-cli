@@ -20,6 +20,33 @@ func (db *DB) UpdateContractCheck(ctx context.Context, contractID int64) error {
 	return err
 }
 
+func (db *DB) GetAllContracts(ctx context.Context, totalWorkers, workerID int) ([]ContractWithMeta, error) {
+	query := `
+		SELECT c.id, c.file_id, c.provider_addr, c.contract_addr, c.balance_nano_ton, c.last_check, f.bag_id
+		FROM contracts c
+		JOIN files f ON c.file_id = f.id
+		WHERE c.created_at < NOW() - INTERVAL '12 hours'
+		  AND c.id % $1 = $2
+		ORDER BY c.last_check ASC 
+		LIMIT 20
+	`
+	rows, err := db.pool.Query(ctx, query, totalWorkers, workerID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var result []ContractWithMeta
+	for rows.Next() {
+		var c ContractWithMeta
+		if err := rows.Scan(&c.ID, &c.FileID, &c.ProviderAddr, &c.ContractAddr, &c.BalanceNano, &c.LastCheck, &c.BagID); err != nil {
+			return nil, err
+		}
+		result = append(result, c)
+	}
+	return result, nil
+}
+
 func (db *DB) GetActiveContracts(ctx context.Context, totalWorkers, workerID int) ([]ContractWithMeta, error) {
 	query := `
 		SELECT c.id, c.file_id, c.provider_addr, c.contract_addr, c.balance_nano_ton, c.last_check, f.bag_id
