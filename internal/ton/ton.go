@@ -170,7 +170,7 @@ func (s *Service) CreateBag(ctx context.Context, localPath string) ([]byte, erro
 		return nil, fmt.Errorf("create torrent failed: %w", err)
 	}
 
-	if err := torrent.Start(false, true, false); err != nil {
+	if err := torrent.Start(true, true, false); err != nil {
 		return nil, fmt.Errorf("failed to start torrent seeding: %w", err)
 	}
 
@@ -451,7 +451,7 @@ func (s *Service) StartSeeding(ctx context.Context) error {
 	
 	count := 0
 	for _, t := range torrents {
-		if err := t.Start(false, true, false); err != nil {
+		if err := t.Start(true, true, false); err != nil {
 			log.Printf("⚠️ Failed to resume seeding for bag %s: %v", hex.EncodeToString(t.BagID), err)
 			continue
 		}
