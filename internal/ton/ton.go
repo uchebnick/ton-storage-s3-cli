@@ -336,10 +336,7 @@ func (s *Service) HireProvider(ctx context.Context, bagID []byte, providerAddrSt
 		}
 	}
 
-	// 8. Добавление Газа (0.1 TON)
-	gasAmount := tlb.MustFromTON("0.1")
-	totalAmountNano := amount.Nano().Add(amount.Nano(), gasAmount.Nano())
-	finalAmount := tlb.FromNanoTON(totalAmountNano)
+
 
 	msg := &wallet.Message{
 		Mode: 1, 
@@ -347,13 +344,13 @@ func (s *Service) HireProvider(ctx context.Context, bagID []byte, providerAddrSt
 			IHRDisabled: true,
 			Bounce:      true,
 			DstAddr:     contractAddr,
-			Amount:      finalAmount, 
+			Amount:      amount, 
 			Body:        bodyCell,    
 			StateInit:   stateInitStruct,
 		},
 	}
 
-	log.Printf("Sending tx to Storage Contract %s (Req: %s, Sent: %s)...", contractAddr.String(), amount.String(), finalAmount.String())
+	log.Printf("Sending tx to Storage Contract %s (Sent: %s)...", contractAddr.String(), amount.String())
 
 	_, _, err = s.wallet.SendManyWaitTransaction(ctx, []*wallet.Message{msg})
 	if err != nil {
