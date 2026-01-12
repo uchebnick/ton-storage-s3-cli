@@ -26,12 +26,10 @@ func RunPingerWorker(ctx context.Context, workerID int, totalWorkers int, db *da
 		contracts, err := db.GetActiveContracts(ctx, totalWorkers, workerID)
 		if err != nil {
 			log.Printf("[Pinger %d] DB Error: %v", workerID, err)
-			time.Sleep(5 * time.Second)
 			continue
 		}
 
 		if len(contracts) == 0 {
-			time.Sleep(10 * time.Second)
 			continue
 		}
 
@@ -42,7 +40,7 @@ func RunPingerWorker(ctx context.Context, workerID int, totalWorkers int, db *da
 			processPing(ctx, workerID, tonSvc, c)
 		}
 
-		time.Sleep(30 * time.Second)
+		time.Sleep(5 * time.Second)
 	}
 }
 
