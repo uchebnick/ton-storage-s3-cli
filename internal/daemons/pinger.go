@@ -30,6 +30,7 @@ func RunPingerWorker(ctx context.Context, workerID int, totalWorkers int, db *da
 		}
 
 		if len(contracts) == 0 {
+			time.Sleep(5 * time.Second)
 			continue
 		}
 
@@ -40,7 +41,7 @@ func RunPingerWorker(ctx context.Context, workerID int, totalWorkers int, db *da
 			processPing(ctx, workerID, tonSvc, c)
 		}
 
-		time.Sleep(5 * time.Second)
+		time.Sleep(15 * time.Second)
 	}
 }
 
