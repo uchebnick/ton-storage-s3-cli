@@ -246,10 +246,11 @@ func (s *Service) GetAllBagsFullStatus() ([]BagFullStatus, error) {
 
 
 func (s *Service) HireProvider(ctx context.Context, bagID []byte, providerAddrStr string, amount tlb.Coins) (string, error) {
+	fmt.Println(bagID, providerAddrStr, amount)
 
-	provAddr, err := parseAddressAny(providerAddrStr)
+	provAddr, err := address.ParseAddr(providerAddrStr)
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("invalid provider address: %w", err)
 	}
 
 	rates, err := s.providerClient.FetchProviderRates(ctx, bagID, provAddr.Data())
@@ -264,29 +265,27 @@ func (s *Service) HireProvider(ctx context.Context, bagID []byte, providerAddrSt
 	offer := provider.CalculateBestProviderOffer(rates)
 
 	newProviderData := provider.NewProviderData{
-		Address:	provAddr,
-		MaxSpan:	offer.Span,
-		PricePerMBDay:	tlb.FromNanoTON(offer.RatePerMBNano),
+		Address:       provAddr,
+		MaxSpan:       offer.Span,
+		PricePerMBDay: tlb.FromNanoTON(offer.RatePerMBNano),
 	}
 
 	providersList := []provider.NewProviderData{newProviderData}
 
 	contractData, err := s.providerClient.FetchProviderContract(ctx, bagID, s.wallet.Address())
-
 	if err != nil {
 		if !errors.Is(err, contract.ErrNotDeployed) {
 			return "", fmt.Errorf("failed to fetch contract info: %w", err)
 		}
 	} else {
-
 		for _, p := range contractData.Providers {
 			if bytes.Equal(p.Key, provAddr.Data()) {
 				continue
 			}
 			providersList = append(providersList, provider.NewProviderData{
-				Address:	address.NewAddress(0, 0, p.Key),
-				MaxSpan:	p.MaxSpan,
-				PricePerMBDay:	p.RatePerMB,
+				Address:       address.NewAddress(0, 0, p.Key),
+				MaxSpan:       p.MaxSpan,
+				PricePerMBDay: p.RatePerMB,
 			})
 		}
 	}
@@ -296,36 +295,42 @@ func (s *Service) HireProvider(ctx context.Context, bagID []byte, providerAddrSt
 		return "", fmt.Errorf("failed to build tx: %w", err)
 	}
 
-	bodyCells, err := cell.FromBOC(body)
+	bodyCell, err := cell.FromBOC(body)
 	if err != nil {
 		return "", fmt.Errorf("failed to parse body boc: %w", err)
 	}
 
 	var stateInitStruct *tlb.StateInit
 	if len(stateInit) > 0 {
-		siCells, err := cell.FromBOC(stateInit)
+		siCell, err := cell.FromBOC(stateInit)
 		if err != nil {
 			return "", fmt.Errorf("failed to parse stateInit boc: %w", err)
 		}
+		
 		stateInitStruct = &tlb.StateInit{}
-		if err := tlb.LoadFromCell(stateInitStruct, siCells.BeginParse()); err != nil {
+		if err := tlb.LoadFromCell(stateInitStruct, siCell.BeginParse()); err != nil {
 			return "", fmt.Errorf("failed to load stateInit: %w", err)
 		}
 	}
 
+
+	gasAmount := tlb.MustFromTON("0.1")
+	totalAmountNano := amount.Nano().Add(amount.Nano(), gasAmount.Nano())
+	finalAmount := tlb.FromNanoTON(totalAmountNano)
+
 	msg := &wallet.Message{
-		Mode:	1,
+		Mode: 1,
 		InternalMessage: &tlb.InternalMessage{
-			IHRDisabled:	true,
-			Bounce:		true,
-			DstAddr:	contractAddr,
-			Amount:		amount,
-			Body:		bodyCells,
-			StateInit:	stateInitStruct,
+			IHRDisabled: true,
+			Bounce:      true,
+			DstAddr:     contractAddr,
+			Amount:      finalAmount,
+			Body:        bodyCell,
+			StateInit:   stateInitStruct,
 		},
 	}
 
-	log.Printf("Sending tx to Storage Contract %s...", contractAddr.String())
+	log.Printf("Sending tx to Storage Contract %s (Req: %s, Sent: %s)...", contractAddr.String(), amount.String(), finalAmount.String())
 
 	_, _, err = s.wallet.SendManyWaitTransaction(ctx, []*wallet.Message{msg})
 	if err != nil {
