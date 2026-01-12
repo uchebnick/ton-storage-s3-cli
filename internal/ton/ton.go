@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/ed25519"
 	"encoding/hex"
+	"math/bits"
 	"fmt"
 	"log"
 	"net"
@@ -180,15 +181,64 @@ func (s *Service) CreateBag(ctx context.Context, localPath string) ([]byte, erro
 	return torrent.BagID, nil
 }
 
-func (s *Service) ListBags(ctx context.Context) ([]string, error) {
-	torrents := s.storage.GetAll()
+type BagFullStatus struct {
+	BagID         string `json:"bag_id"`
+	Peers         int    `json:"peers"`
+	UploadSpeed   uint64 `json:"upload_speed"`
+	DownloadSpeed uint64 `json:"download_speed"`
+	UploadedTotal uint64 `json:"uploaded_total"`
+	Downloaded    uint64 `json:"downloaded"`
+	FileSize      uint64 `json:"file_size"`
+	Completed     bool   `json:"completed"`
+	Active        bool   `json:"active"`
+	HeaderLoaded  bool   `json:"header_loaded"`
+}
 
-	var bags []string
-	for _, t := range torrents {
-		bags = append(bags, hex.EncodeToString(t.BagID))
+func (s *Service) GetBagFullStatus(bagID []byte) (*BagFullStatus, error) {
+	tor := s.storage.GetTorrent(bagID)
+	if tor == nil {
+		return nil, fmt.Errorf("torrent not found")
 	}
 
-	return bags, nil
+	var dow, upl uint64
+	peers := tor.GetPeers()
+	for _, p := range peers {
+		dow += p.GetDownloadSpeed()
+		upl += p.GetUploadSpeed()
+	}
+
+	active, _ := tor.IsActive()
+	
+	// Расчет прогресса скачивания (аналог логики из getBag)
+	var downloaded uint64
+	completed := false
+	if tor.Info != nil {
+		mask := tor.PiecesMask()
+		downloadedPieces := 0
+		for _, b := range mask {
+			downloadedPieces += bits.OnesCount8(b)
+		}
+		
+		// Примерный расчет объема данных
+		downloaded = uint64(downloadedPieces * int(tor.Info.PieceSize))
+		if downloaded > tor.Info.FileSize {
+			downloaded = tor.Info.FileSize
+		}
+		completed = uint32(downloadedPieces) == tor.Info.PiecesNum()
+	}
+
+	return &BagFullStatus{
+		BagID:         hex.EncodeToString(bagID),
+		Peers:         len(peers),
+		UploadSpeed:   upl,
+		DownloadSpeed: dow,
+		UploadedTotal: tor.GetUploadStats(),
+		Downloaded:    downloaded,
+		FileSize:      tor.Info.FileSize,
+		Completed:     completed,
+		Active:        active,
+		HeaderLoaded:  tor.Header != nil,
+	}, nil
 }
 
 func (s *Service) HireProvider(ctx context.Context, bagID []byte, providerAddrStr string, amount tlb.Coins) (string, error) {

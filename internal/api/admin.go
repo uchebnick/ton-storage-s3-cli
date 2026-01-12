@@ -54,7 +54,7 @@ func (s *AdminServer) registerRoutes() {
 
 	v1.Get("/files", s.listFiles)
 	v1.Get("/files/:id", s.getFileDetails)
-	v1.Get("/bags", s.listBags)
+	v1.Get("/bags", s.getBagsStats)
 
 
 	v1.Post("/upload", s.uploadFile)
@@ -68,12 +68,21 @@ func (s *AdminServer) registerRoutes() {
 
 }
 
-func (s *AdminServer) listBags(c *fiber.Ctx) error {
-	bags, err := s.tonSvc.ListBags(c.Context())
+func (s *AdminServer) getBagsStats(c *fiber.Ctx) error {
+	id, _ := strconv.ParseInt(c.Params("id"), 10, 64)
+	file, err := s.db.GetFileByID(c.Context(), id)
+	if err != nil {
+		return c.Status(404).JSON(fiber.Map{"error": "Not found"})
+	}
+
+	bagBytes, _ := hex.DecodeString(file.BagID)
+	
+	stats, err := s.tonSvc.GetBagFullStatus(bagBytes)
 	if err != nil {
 		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
 	}
-	return c.JSON(fiber.Map{"bags": bags})
+	
+	return c.JSON(stats)
 }
 
 func (s *AdminServer) listFiles(c *fiber.Ctx) error {
