@@ -74,6 +74,25 @@ func (db *DB) GetActiveContracts(ctx context.Context, totalWorkers, workerID int
 	return result, nil
 }
 
+func (db *DB) GetContractByBagID(ctx context.Context, bagID string) (*ContractWithMeta, error) {
+	query := `
+		SELECT c.id, c.file_id, c.provider_addr, c.contract_addr, c.balance_nano_ton, c.last_check, f.bag_id
+		FROM contracts c
+		JOIN files f ON c.file_id = f.id
+		WHERE f.bag_id = $1
+		ORDER BY c.id DESC
+		LIMIT 1
+	`
+	var c ContractWithMeta
+	err := db.pool.QueryRow(ctx, query, bagID).Scan(
+		&c.ID, &c.FileID, &c.ProviderAddr, &c.ContractAddr, &c.BalanceNano, &c.LastCheck, &c.BagID,
+	)
+	if err != nil {
+		return nil, err
+	}
+	return &c, nil
+}
+
 func (db *DB) GetContractByID(ctx context.Context, id int64) (*ContractWithMeta, error) {
 	query := `
 		SELECT c.id, c.file_id, c.provider_addr, c.contract_addr, c.balance_nano_ton, c.last_check, f.bag_id

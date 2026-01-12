@@ -502,3 +502,17 @@ func (s *Service) PingProvider(ctx context.Context, bagID []byte, providerKeyHex
 
 	return nil
 }
+
+func (s *Service) DeleteLocalFile(bagID []byte) error {
+	tor := s.storage.GetTorrent(bagID)
+	if tor == nil {
+		return nil
+	}
+
+	err := s.storage.RemoveTorrent(tor, true)
+	if err != nil {
+		return fmt.Errorf("failed to remove torrent: %w", err)
+	}
+
+	return nil
+}

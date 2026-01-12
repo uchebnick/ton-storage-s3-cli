@@ -56,7 +56,7 @@ func (s *AdminServer) registerRoutes() {
 	v1.Get("/files/:id", s.getFileDetails)
 	v1.Get("/bags", s.getBagsStats)
 
-
+	v1.Delete("/files/:id", s.deleteFile)
 	v1.Post("/upload", s.uploadFile)
 	v1.Get("/files/:id/download", s.downloadFile)
 	v1.Post("/files/:id/restore", s.restoreFile)
@@ -287,5 +287,43 @@ func (s *AdminServer) getFileStats(c *fiber.Ctx) error {
 		"upload_speed": speed,
 		"uploaded_total": total,
 		"file_size": file.SizeBytes,
+	})
+}
+
+func (s *AdminServer) deleteFile(c *fiber.Ctx) error {
+	// Парсим ID файла
+	id, err := strconv.ParseInt(c.Params("id"), 10, 64)
+	if err != nil {
+		return c.Status(400).JSON(fiber.Map{"error": "Invalid ID"})
+	}
+
+	// Ищем файл в БД
+	file, err := s.db.GetFileByID(c.Context(), id)
+	if err != nil {
+		return c.Status(404).JSON(fiber.Map{"error": "File not found in DB"})
+	}
+
+	// Декодируем BagID
+	bagBytes, err := hex.DecodeString(file.BagID)
+	if err != nil {
+		return c.Status(500).JSON(fiber.Map{"error": "Invalid BagID hex"})
+	}
+
+	// Вызываем удаление из памяти и с диска
+	// (Этот метод мы добавили в ton/service.go в предыдущих ответах)
+	if err := s.tonSvc.DeleteLocalFile(bagBytes); err != nil {
+		log.Printf("⚠️ Failed to delete local file %s: %v", file.BagID, err)
+		return c.Status(500).JSON(fiber.Map{"error": "Failed to delete files: " + err.Error()})
+	}
+
+	// Опционально: Можно обновить статус файла в БД, например на "offloaded"
+	// Но пока просто возвращаем успех
+	
+	log.Printf("🗑️ File %s (ID: %d) deleted via API", file.BagID, id)
+
+	return c.JSON(fiber.Map{
+		"status":  "deleted_locally",
+		"message": "Local files removed. Torrent removed from memory. Use /restore to download again.",
+		"bag_id":  file.BagID,
 	})
 }

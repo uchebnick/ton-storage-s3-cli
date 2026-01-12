@@ -105,7 +105,7 @@ func processFile(ctx context.Context, workerID int, db *database.DB, tonSvc *ton
 }
 
 func calcJitterBalance(rng *rand.Rand) tlb.Coins {
-	const baseNano = 200_000_000
+	const baseNano = 100_000_000
 	const maxJitter = 10_000_000
 
 	jitter := rng.Int63n(maxJitter)
