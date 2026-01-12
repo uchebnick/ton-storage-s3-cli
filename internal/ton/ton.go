@@ -246,13 +246,31 @@ func (s *Service) GetAllBagsFullStatus() ([]BagFullStatus, error) {
 
 
 func (s *Service) HireProvider(ctx context.Context, bagID []byte, providerAddrStr string, amount tlb.Coins) (string, error) {
-	fmt.Println(bagID, providerAddrStr, amount)
+	// --- ИСПРАВЛЕНИЕ АДРЕСА ---
+	var provAddr *address.Address
+	var err error
 
-	provAddr, err := address.ParseAddr(providerAddrStr)
+	// 1. Сначала пробуем стандартный парсер (для EQ... или 0:...)
+	provAddr, err = address.ParseAddr(providerAddrStr)
 	if err != nil {
-		return "", fmt.Errorf("invalid provider address: %w", err)
+		// 2. Если не вышло, пробуем как Raw Hex (то, что шлет Replicator)
+		if len(providerAddrStr) == 64 {
+			decoded, decodeErr := hex.DecodeString(providerAddrStr)
+			if decodeErr == nil {
+				// Провайдеры обычно в воркчейне 0
+				provAddr = address.NewAddress(0, 0, decoded)
+				err = nil 
+			}
+		}
 	}
 
+	// Если все равно ошибка — возвращаем её
+	if err != nil || provAddr == nil {
+		return "", fmt.Errorf("invalid provider address: %w", err)
+	}
+	// ---------------------------
+
+	// 2. Получение тарифов
 	rates, err := s.providerClient.FetchProviderRates(ctx, bagID, provAddr.Data())
 	if err != nil {
 		return "", fmt.Errorf("failed to fetch rates: %w", err)
@@ -262,6 +280,7 @@ func (s *Service) HireProvider(ctx context.Context, bagID []byte, providerAddrSt
 		return "", fmt.Errorf("provider is not accepting requests")
 	}
 
+	// 3. Расчет предложения
 	offer := provider.CalculateBestProviderOffer(rates)
 
 	newProviderData := provider.NewProviderData{
@@ -272,6 +291,7 @@ func (s *Service) HireProvider(ctx context.Context, bagID []byte, providerAddrSt
 
 	providersList := []provider.NewProviderData{newProviderData}
 
+	// 4. Получение текущего списка (чтобы не затереть других)
 	contractData, err := s.providerClient.FetchProviderContract(ctx, bagID, s.wallet.Address())
 	if err != nil {
 		if !errors.Is(err, contract.ErrNotDeployed) {
@@ -290,16 +310,19 @@ func (s *Service) HireProvider(ctx context.Context, bagID []byte, providerAddrSt
 		}
 	}
 
+	// 5. Построение транзакции
 	contractAddr, body, stateInit, err := s.providerClient.BuildAddProviderTransaction(ctx, bagID, s.wallet.Address(), providersList)
 	if err != nil {
 		return "", fmt.Errorf("failed to build tx: %w", err)
 	}
 
+	// 6. Парсинг Body
 	bodyCell, err := cell.FromBOC(body)
 	if err != nil {
 		return "", fmt.Errorf("failed to parse body boc: %w", err)
 	}
 
+	// 7. Парсинг StateInit
 	var stateInitStruct *tlb.StateInit
 	if len(stateInit) > 0 {
 		siCell, err := cell.FromBOC(stateInit)
@@ -313,19 +336,19 @@ func (s *Service) HireProvider(ctx context.Context, bagID []byte, providerAddrSt
 		}
 	}
 
-
+	// 8. Добавление Газа (0.1 TON)
 	gasAmount := tlb.MustFromTON("0.1")
 	totalAmountNano := amount.Nano().Add(amount.Nano(), gasAmount.Nano())
 	finalAmount := tlb.FromNanoTON(totalAmountNano)
 
 	msg := &wallet.Message{
-		Mode: 1,
+		Mode: 1, 
 		InternalMessage: &tlb.InternalMessage{
 			IHRDisabled: true,
 			Bounce:      true,
 			DstAddr:     contractAddr,
-			Amount:      finalAmount,
-			Body:        bodyCell,
+			Amount:      finalAmount, 
+			Body:        bodyCell,    
 			StateInit:   stateInitStruct,
 		},
 	}
