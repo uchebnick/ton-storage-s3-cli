@@ -180,6 +180,17 @@ func (s *Service) CreateBag(ctx context.Context, localPath string) ([]byte, erro
 	return torrent.BagID, nil
 }
 
+func (s *Service) ListBags(ctx context.Context) ([]string, error) {
+	torrents := s.storage.GetAll()
+
+	var bags []string
+	for _, t := range torrents {
+		bags = append(bags, hex.EncodeToString(t.BagID))
+	}
+
+	return bags, nil
+}
+
 func (s *Service) HireProvider(ctx context.Context, bagID []byte, providerAddrStr string, amount tlb.Coins) (string, error) {
 
 	provAddr, err := parseAddressAny(providerAddrStr)
@@ -318,14 +329,13 @@ func (s *Service) CheckHealth(ctx context.Context, bagID []byte, providerAddrStr
 }
 
 func parseAddressAny(addrStr string) (*address.Address, error) {
-	if len(addrStr) == 64 {
-		b, err := hex.DecodeString(addrStr)
-		if err != nil {
-			return nil, fmt.Errorf("invalid hex: %w", err)
-		}
-		return address.NewAddress(0, 0, b), nil
+	b, err := hex.DecodeString(addrStr)
+	if err != nil {
+		return nil, fmt.Errorf("invalid hex: %w", err)
 	}
-	return address.ParseAddr(addrStr)
+	return address.NewAddress(0, 0, b), nil
+
+	
 }
 
 func (s *Service) WaitForFile(ctx context.Context, bagID []byte, filename string) (string, error) {

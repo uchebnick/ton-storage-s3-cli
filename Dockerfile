@@ -38,7 +38,7 @@ RUN mkdir -p ./var/ton-db ./var/downloads
 # 8080 - S3 Gateway
 # 3000 - Admin API
 # 14321/udp - TON ADNL (P2P сеть)
-EXPOSE 8080 3000 14321/udp
+EXPOSE 8080 3000 14321/udp 14321/tcp
 
 # Запуск
 CMD ["./ton-s3-gateway"]

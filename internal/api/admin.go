@@ -54,6 +54,8 @@ func (s *AdminServer) registerRoutes() {
 
 	v1.Get("/files", s.listFiles)
 	v1.Get("/files/:id", s.getFileDetails)
+	v1.Get("/bags", s.listBags)
+
 
 	v1.Post("/upload", s.uploadFile)
 	v1.Get("/files/:id/download", s.downloadFile)
@@ -64,6 +66,14 @@ func (s *AdminServer) registerRoutes() {
 	v1.Get("/contracts/:id/audit", s.auditContract)
 	v1.Post("/contracts/:id/withdraw", s.withdrawContract)
 
+}
+
+func (s *AdminServer) listBags(c *fiber.Ctx) error {
+	bags, err := s.tonSvc.ListBags(c.Context())
+	if err != nil {
+		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
+	}
+	return c.JSON(fiber.Map{"bags": bags})
 }
 
 func (s *AdminServer) listFiles(c *fiber.Ctx) error {
