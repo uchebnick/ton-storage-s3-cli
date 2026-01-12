@@ -25,8 +25,7 @@ func (db *DB) GetAllContracts(ctx context.Context, totalWorkers, workerID int) (
 		SELECT c.id, c.file_id, c.provider_addr, c.contract_addr, c.balance_nano_ton, c.last_check, f.bag_id
 		FROM contracts c
 		JOIN files f ON c.file_id = f.id
-		WHERE c.created_at < NOW() - INTERVAL '12 hours'
-		  AND c.id % $1 = $2
+		WHERE c.id % $1 = $2
 		ORDER BY c.last_check ASC 
 		LIMIT 20
 	`
