@@ -10,7 +10,7 @@ import (
 func (db *DB) InitSchema(ctx context.Context) error {
 	log.Println("🛠️  Reading schema from file...")
 
-	content, err := os.ReadFile("schema.sql")
+	content, err := os.ReadFile("./internal/databaseschema.sql")
 	if err != nil {
 		return fmt.Errorf("failed to read schema file: %w", err)
 	}
