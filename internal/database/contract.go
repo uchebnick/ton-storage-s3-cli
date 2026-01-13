@@ -143,7 +143,7 @@ func (db *DB) GetContractsForAudit(ctx context.Context, totalWorkers, workerID i
 		JOIN files f ON c.file_id = f.id
 		WHERE c.status IN ('active', 'pending') -- Берем и активные, и ждущие
 		  AND c.id % $1 = $2
-		  AND c.last_check < NOW() - INTERVAL '10 minutes'
+		  AND c.last_check < NOW() - INTERVAL '1 minutes'
 		ORDER BY c.last_check ASC 
 		LIMIT 20
 	`

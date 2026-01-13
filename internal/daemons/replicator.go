@@ -15,7 +15,7 @@ import (
 )
 
 func RunReplicatorWorker(ctx context.Context, workerID int, totalWorkers int, db *database.DB, tonSvc *ton.Service) {
-	minAge := 1 * time.Minute
+	minAge := 2 * time.Minute
 	log.Printf("[Replicator %d] Worker started. Monitoring file health 🚑", workerID)
 
 	source := rand.NewSource(time.Now().UnixNano() + int64(workerID))
