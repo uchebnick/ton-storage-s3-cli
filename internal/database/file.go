@@ -1,6 +1,10 @@
 package database
 
-import "context"
+import (
+	"context"
+	"time"
+)
+
 
 func (db *DB) CreateFile(ctx context.Context, f *File) (int64, error) {
 	var id int64
@@ -81,4 +85,39 @@ func (db *DB) GetFileByID(ctx context.Context, id int64) (*File, error) {
 		return nil, err
 	}
 	return f, nil
+}
+
+func (db *DB) GetFilesReadyForCleaning(ctx context.Context, cutoffTime time.Time, totalWorkers, workerID, limit int) ([]File, error) {
+	query := `
+		SELECT f.id, f.bucket_name, f.object_key, f.bag_id, f.size_bytes, f.target_replicas, f.status, f.created_at
+		FROM files f
+		JOIN contracts c ON f.id = c.file_id
+		WHERE f.created_at < $1
+		  AND f.id % $2 = $3 -- Шардирование по ID файла
+		  AND c.status = 'active'
+		  AND c.last_check > NOW() - INTERVAL '30 minutes'
+		GROUP BY f.id
+		HAVING COUNT(c.id) >= f.target_replicas
+		ORDER BY f.created_at ASC
+		LIMIT $4
+	`
+
+	rows, err := db.pool.Query(ctx, query, cutoffTime, totalWorkers, workerID, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var result []File
+	for rows.Next() {
+		var f File
+		if err := rows.Scan(
+			&f.ID, &f.BucketName, &f.ObjectKey, &f.BagID, &f.SizeBytes, 
+			&f.TargetReplicas, &f.Status, &f.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		result = append(result, f)
+	}
+	return result, nil
 }

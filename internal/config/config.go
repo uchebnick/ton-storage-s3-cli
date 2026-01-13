@@ -26,6 +26,7 @@ type Config struct {
 	ReplicatorWorkers	int
 	AuditorWorkers		int
 	PingerWorkers		int
+	CleanerWorkers		int
 	ExternalIP		string
 }
 
@@ -45,6 +46,7 @@ func LoadConfig() (*Config, error) {
 		ReplicatorWorkers:	getEnvAsInt("REPLICATOR_WORKERS", 5),
 		AuditorWorkers:		getEnvAsInt("AUDITOR_WORKERS", 3),
 		PingerWorkers:		getEnvAsInt("PINGER_WORKERS", 2),
+		CleanerWorkers:		getEnvAsInt("CLEANER_WORKERS", 2),
 		ExternalIP:		getEnv("EXTERNAL_IP", "0.0.0.0"),
 	}
 

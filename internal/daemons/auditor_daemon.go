@@ -34,7 +34,6 @@ func RunAuditorWorker(ctx context.Context, workerID int, totalWorkers int, db *d
 		}
 
 		for _, c := range contracts {
-
 			if ctx.Err() != nil {
 				return
 			}
@@ -44,8 +43,7 @@ func RunAuditorWorker(ctx context.Context, workerID int, totalWorkers int, db *d
 }
 
 func processContract(ctx context.Context, workerID int, db *database.DB, tonSvc *ton.Service, c database.ContractWithMeta) {
-
-	logPrefix := fmt.Sprintf("[Auditor %d | %s]", workerID, c.ContractAddr)
+	logPrefix := fmt.Sprintf("[Auditor %d | %s]", workerID, c.ProviderAddr)
 
 	report, err := tonSvc.AuditProvider(ctx, c.BagID, c.ProviderAddr)
 	if err != nil {
@@ -54,7 +52,6 @@ func processContract(ctx context.Context, workerID int, db *database.DB, tonSvc 
 	}
 
 	if report.IsHealthy {
-
 		if err := db.UpdateContractCheck(ctx, c.ID); err != nil {
 			log.Printf("%s Failed to update DB check time: %v", logPrefix, err)
 		}
@@ -64,11 +61,11 @@ func processContract(ctx context.Context, workerID int, db *database.DB, tonSvc 
 	log.Printf("%s 🚨 PROVIDER DEAD. Reason: %s. Status: %s. LastProof: %s ago",
 		logPrefix, report.FailureReason, report.Status, time.Since(report.LastProofAt))
 
-	txHash, err := tonSvc.WithdrawFunds(ctx, c.BagID, c.ProviderAddr)
+	txHash, err := tonSvc.RemoveProvider(ctx, c.BagID, c.ProviderAddr)
 	if err != nil {
-		log.Printf("%s Withdraw failed (network error?): %v", logPrefix, err)
+		log.Printf("%s ⚠️ Failed to remove provider from contract (network error?): %v", logPrefix, err)
 	} else {
-		log.Printf("%s 💸 Funds withdrawn successfully! Tx: %s", logPrefix, txHash)
+		log.Printf("%s ✂️ Provider removed from contract! Tx: %s", logPrefix, txHash)
 	}
 
 	if err := db.MarkContractFailed(ctx, c.ID); err != nil {

@@ -83,6 +83,14 @@ func main() {
 
 	log.Printf("✅ Started Pinger Pool (%d workers)", cfg.PingerWorkers)
 
+	cleanerTask := func(ctx context.Context, id int, total int) {
+		daemons.RunCleanerWorker(ctx, id, total, db, tonSvc)
+	}
+	
+	cleanerPool := daemons.NewPool(ctx, cfg.CleanerWorkers, cleanerTask)
+	cleanerPool.Start()
+	log.Println("✅ Started Cleaner Pool")
+
 	s3Server := api.NewS3Server(db, tonSvc, cfg.DownloadsPath)
 	adminServer := api.NewAdminServer(db, tonSvc)
 

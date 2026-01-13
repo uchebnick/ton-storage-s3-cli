@@ -265,7 +265,12 @@ func (s *AdminServer) withdrawContract(c *fiber.Ctx) error {
 		return c.Status(404).JSON(fiber.Map{"error": "Contract not found"})
 	}
 
-	txHash, err := s.tonSvc.WithdrawFunds(c.Context(), contr.BagID, contr.ProviderAddr)
+	bagBytes, err := hex.DecodeString(contr.BagID)
+	if err != nil {
+		return c.Status(500).JSON(fiber.Map{"error": "Invalid BagID in DB"})
+	}
+
+	txHash, err := s.tonSvc.WithdrawAllFunds(c.Context(), bagBytes)
 	if err != nil {
 		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
 	}
@@ -291,33 +296,26 @@ func (s *AdminServer) getFileStats(c *fiber.Ctx) error {
 }
 
 func (s *AdminServer) deleteFile(c *fiber.Ctx) error {
-	// Парсим ID файла
 	id, err := strconv.ParseInt(c.Params("id"), 10, 64)
 	if err != nil {
 		return c.Status(400).JSON(fiber.Map{"error": "Invalid ID"})
 	}
 
-	// Ищем файл в БД
 	file, err := s.db.GetFileByID(c.Context(), id)
 	if err != nil {
 		return c.Status(404).JSON(fiber.Map{"error": "File not found in DB"})
 	}
 
-	// Декодируем BagID
 	bagBytes, err := hex.DecodeString(file.BagID)
 	if err != nil {
 		return c.Status(500).JSON(fiber.Map{"error": "Invalid BagID hex"})
 	}
 
-	// Вызываем удаление из памяти и с диска
-	// (Этот метод мы добавили в ton/service.go в предыдущих ответах)
 	if err := s.tonSvc.DeleteLocalFile(bagBytes); err != nil {
 		log.Printf("⚠️ Failed to delete local file %s: %v", file.BagID, err)
 		return c.Status(500).JSON(fiber.Map{"error": "Failed to delete files: " + err.Error()})
 	}
 
-	// Опционально: Можно обновить статус файла в БД, например на "offloaded"
-	// Но пока просто возвращаем успех
 	
 	log.Printf("🗑️ File %s (ID: %d) deleted via API", file.BagID, id)
 
