@@ -22,9 +22,8 @@ func RunCleanerWorker(ctx context.Context, workerID int, totalWorkers int, db *d
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			cutoff := time.Now().Add(-minAge)
 
-			files, err := db.GetFilesReadyForCleaning(ctx, cutoff, totalWorkers, workerID, 50)
+			files, err := db.GetFilesReadyForCleaning(ctx, minAge, totalWorkers, workerID, 50)
 			if err != nil {
 				log.Printf("[Cleaner %d] DB Error: %v", workerID, err)
 				continue

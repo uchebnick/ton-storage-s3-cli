@@ -15,6 +15,7 @@ import (
 )
 
 func RunReplicatorWorker(ctx context.Context, workerID int, totalWorkers int, db *database.DB, tonSvc *ton.Service) {
+	minAge := 1 * time.Minute
 	log.Printf("[Replicator %d] Worker started. Monitoring file health 🚑", workerID)
 
 	source := rand.NewSource(time.Now().UnixNano() + int64(workerID))
@@ -29,7 +30,7 @@ func RunReplicatorWorker(ctx context.Context, workerID int, totalWorkers int, db
 		default:
 		}
 
-		files, err := db.GetFilesNeedingReplication(ctx, totalWorkers, workerID)
+		files, err := db.GetFilesNeedingReplication(ctx, minAge, totalWorkers, workerID)
 		if err != nil {
 			log.Printf("[Replicator %d] DB Error: %v", workerID, err)
 			time.Sleep(5 * time.Second)

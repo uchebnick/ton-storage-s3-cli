@@ -45,7 +45,6 @@ CREATE TABLE IF NOT EXISTS files (
 -- 4. Таблица Контрактов
 CREATE TABLE IF NOT EXISTS contracts (
     id BIGSERIAL PRIMARY KEY,
-    -- Внешний ключ: Если удалить файл, удалятся и контракты (CASCADE)
     file_id BIGINT REFERENCES files(id) ON DELETE CASCADE,
     
     provider_addr VARCHAR(255) NOT NULL,

@@ -16,22 +16,22 @@ func (db *DB) CreateFile(ctx context.Context, f *File) (int64, error) {
 	return id, err
 }
 
-func (db *DB) GetFilesNeedingReplication(ctx context.Context, totalWorkers, workerID int) ([]FileWithStatus, error) {
+func (db *DB) GetFilesNeedingReplication(ctx context.Context, interval time.Duration, totalWorkers, workerID int) ([]FileWithStatus, error) {
 	query := `
 		SELECT 
 			f.id, f.bucket_name, f.object_key, f.bag_id, f.target_replicas, 
 			COUNT(c.id) as active_count,
 			COALESCE(array_agg(c.provider_addr) FILTER (WHERE c.provider_addr IS NOT NULL), '{}') as used_providers
 		FROM files f
-		LEFT JOIN contracts c ON f.id = c.file_id AND c.status = 'active'
+		LEFT JOIN contracts c ON f.id = c.file_id AND (c.status = 'active' OR c.created_at < (NOW() - $1::interval))
 		WHERE f.status != 'deleted' 
-		  AND f.id % $1 = $2 
+		  AND f.id % $2 = $3
 		GROUP BY f.id
 		HAVING COUNT(c.id) < f.target_replicas
 		LIMIT 50
 	`
 
-	rows, err := db.pool.Query(ctx, query, totalWorkers, workerID)
+	rows, err := db.pool.Query(ctx, query, interval, totalWorkers, workerID)
 	if err != nil {
 		return nil, err
 	}
@@ -87,13 +87,12 @@ func (db *DB) GetFileByID(ctx context.Context, id int64) (*File, error) {
 	return f, nil
 }
 
-func (db *DB) GetFilesReadyForCleaning(ctx context.Context, cutoffTime time.Time, totalWorkers, workerID, limit int) ([]File, error) {
+func (db *DB) GetFilesReadyForCleaning(ctx context.Context, interval time.Duration, totalWorkers, workerID, limit int) ([]File, error) {
 	query := `
 		SELECT f.id, f.bucket_name, f.object_key, f.bag_id, f.size_bytes, f.target_replicas, f.status, f.created_at
 		FROM files f
-		-- Проверяем, что файл НЕ скачивается прямо сейчас (через таблицу downloads)
 		LEFT JOIN downloads d ON f.id = d.file_id AND d.status = 'running'
-		WHERE f.created_at < $1
+		WHERE f.created_at < (NOW() - $1::interval)
 		  AND f.id % $2 = $3
 		  AND f.status = 'active'
 		  AND d.id IS NULL
@@ -101,7 +100,7 @@ func (db *DB) GetFilesReadyForCleaning(ctx context.Context, cutoffTime time.Time
 		LIMIT $4
 	`
 
-	rows, err := db.pool.Query(ctx, query, cutoffTime, totalWorkers, workerID, limit)
+	rows, err := db.pool.Query(ctx, query, interval, totalWorkers, workerID, limit)
 	if err != nil {
 		return nil, err
 	}
