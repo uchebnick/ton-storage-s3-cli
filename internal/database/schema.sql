@@ -1,15 +1,15 @@
-CREATE TABLE api_keys (
+CREATE TABLE IF NOT EXISTS api_keys (
                           access_key VARCHAR(50) PRIMARY KEY,
                           secret_key VARCHAR(100) NOT NULL,
                           created_at TIMESTAMP DEFAULT NOW()
 );
 
-CREATE TABLE buckets (
+CREATE TABLE IF NOT EXISTS buckets (
                          name VARCHAR(63) PRIMARY KEY, 
                          created_at TIMESTAMP DEFAULT NOW()
 );
 
-CREATE TABLE files (
+CREATE TABLE IF NOT EXISTS files (
                        id BIGSERIAL PRIMARY KEY,
                        bucket_name VARCHAR(255) NOT NULL,
                        object_key VARCHAR(1024) NOT NULL,
@@ -22,13 +22,15 @@ CREATE TABLE files (
 );
 
 ALTER TABLE files
-DROP CONSTRAINT IF EXISTS files_bucket_name_fkey,
+DROP CONSTRAINT IF EXISTS files_bucket_name_fkey;
+
+ALTER TABLE files
 ADD CONSTRAINT files_bucket_name_fkey
     FOREIGN KEY (bucket_name)
     REFERENCES buckets(name)
     ON DELETE CASCADE;
 
-CREATE TABLE contracts (
+CREATE TABLE IF NOT EXISTS contracts (
                            id BIGSERIAL PRIMARY KEY,       
                            file_id BIGINT REFERENCES files(id) ON DELETE CASCADE,
                            provider_addr VARCHAR(255) NOT NULL,
@@ -39,7 +41,7 @@ CREATE TABLE contracts (
                            created_at TIMESTAMP DEFAULT NOW()
 );
 
-CREATE TABLE downloads (
+CREATE TABLE IF NOT EXISTS downloads (
     id SERIAL PRIMARY KEY,
     file_id BIGINT NOT NULL REFERENCES files(id) ON DELETE CASCADE,
     started_at TIMESTAMP DEFAULT NOW(),
@@ -48,6 +50,6 @@ CREATE TABLE downloads (
     error_msg TEXT
 );
 
-CREATE INDEX idx_downloads_active ON downloads(file_id) WHERE status = 'running';
-CREATE INDEX idx_files_status ON files(status);
-CREATE INDEX idx_contracts_status_check ON contracts(status, last_check);
+CREATE INDEX IF NOT EXISTS idx_downloads_active ON downloads(file_id) WHERE status = 'running';
+CREATE INDEX IF NOT EXISTS idx_files_status ON files(status);
+CREATE INDEX IF NOT EXISTS idx_contracts_status_check ON contracts(status, last_check);
