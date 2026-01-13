@@ -2,21 +2,19 @@ package database
 
 import (
 	"context"
+	_ "embed"
 	"fmt"
 	"log"
-	"os"
 )
+
+//go:embed schema.sql
+var schemaSQL string
 
 func (db *DB) InitSchema(ctx context.Context) error {
 	log.Println("🛠️  Reading schema from file...")
 
-	content, err := os.ReadFile("./internal/database/schema.sql")
-	if err != nil {
-		return fmt.Errorf("failed to read schema file: %w", err)
-	}
-
 	log.Println("🛠️  Applying database schema...")
-	_, err = db.pool.Exec(ctx, string(content))
+	_, err := db.pool.Exec(ctx, schemaSQL)
 	if err != nil {
 		return fmt.Errorf("migration failed: %w", err)
 	}
