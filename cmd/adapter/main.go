@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"ton-storage-s3-cli/internal/api"
 	"ton-storage-s3-cli/internal/config"
@@ -72,7 +73,11 @@ func main() {
 	}
 
 	auditorPool := daemons.NewPool(ctx, cfg.AuditorWorkers, auditorTask)
-	auditorPool.Start()
+	func() {
+		time.Sleep(30 * time.Second)
+			auditorPool.Start()
+
+	}()
 	log.Printf("✅ Started Auditor Pool (%d workers)", cfg.AuditorWorkers)
 
 	pingerTask := func(ctx context.Context, id int, total int) {
@@ -88,7 +93,10 @@ func main() {
 	}
 	
 	cleanerPool := daemons.NewPool(ctx, cfg.CleanerWorkers, cleanerTask)
-	cleanerPool.Start()
+	func() {
+		time.Sleep(30 * time.Second)
+		cleanerPool.Start()
+	}()
 	log.Println("✅ Started Cleaner Pool")
 
 	s3Server := api.NewS3Server(db, tonSvc, cfg.DownloadsPath)
