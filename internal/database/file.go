@@ -16,22 +16,22 @@ func (db *DB) CreateFile(ctx context.Context, f *File) (int64, error) {
 	return id, err
 }
 
-func (db *DB) GetFilesNeedingReplication(ctx context.Context, interval time.Duration, totalWorkers, workerID int) ([]FileWithStatus, error) {
+func (db *DB) GetFilesNeedingReplication(ctx context.Context, totalWorkers, workerID int) ([]FileWithStatus, error) {
 	query := `
 		SELECT 
 			f.id, f.bucket_name, f.object_key, f.bag_id, f.target_replicas, 
 			COUNT(c.id) as active_count,
 			COALESCE(array_agg(c.provider_addr) FILTER (WHERE c.provider_addr IS NOT NULL), '{}') as used_providers
 		FROM files f
-		LEFT JOIN contracts c ON f.id = c.file_id AND (c.status = 'active' OR c.created_at < (NOW() - $1::interval))
+		LEFT JOIN contracts c ON f.id = c.file_id AND (c.status = 'active' OR c.status = 'pending')
 		WHERE f.status != 'deleted' 
-		  AND f.id % $2 = $3
+		  AND f.id % $1 = $2
 		GROUP BY f.id
 		HAVING COUNT(c.id) < f.target_replicas
 		LIMIT 50
 	`
 
-	rows, err := db.pool.Query(ctx, query, interval, totalWorkers, workerID)
+	rows, err := db.pool.Query(ctx, query, totalWorkers, workerID)
 	if err != nil {
 		return nil, err
 	}

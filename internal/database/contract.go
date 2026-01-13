@@ -141,9 +141,9 @@ func (db *DB) GetContractsForAudit(ctx context.Context, totalWorkers, workerID i
 		SELECT c.id, c.file_id, c.provider_addr, c.contract_addr, c.balance_nano_ton, c.last_check, f.bag_id, c.status
 		FROM contracts c
 		JOIN files f ON c.file_id = f.id
-		WHERE c.status IN ('active', 'pending') -- Берем и активные, и ждущие
+		WHERE c.status IN ('active', 'pending')
 		  AND c.id % $1 = $2
-		  AND c.last_check < NOW() - INTERVAL '1 minutes'
+		  AND c.last_check < NOW() - INTERVAL '2 minutes'
 		ORDER BY c.last_check ASC 
 		LIMIT 20
 	`
