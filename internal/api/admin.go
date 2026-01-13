@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"math/bits"
 
 	"ton-storage-s3-cli/internal/database"
 	"ton-storage-s3-cli/internal/ton"
@@ -56,16 +57,15 @@ func (s *AdminServer) registerRoutes() {
 	v1.Get("/files/:id", s.getFileDetails)
 	v1.Get("/bags", s.getBagsStats)
 
-	v1.Delete("/files/:id", s.deleteFile)
 	v1.Post("/upload", s.uploadFile)
 	v1.Get("/files/:id/download", s.downloadFile)
+	v1.Delete("/files/:id", s.deleteFile)
 	v1.Post("/files/:id/restore", s.restoreFile)
 	v1.Post("/files/:id/replicate", s.manualReplicate)
 	v1.Get("/files/:id/stats", s.getFileStats)
 
 	v1.Get("/contracts/:id/audit", s.auditContract)
 	v1.Post("/contracts/:id/withdraw", s.withdrawContract)
-
 }
 
 func (s *AdminServer) getBagsStats(c *fiber.Ctx) error {
@@ -127,7 +127,8 @@ func (s *AdminServer) uploadFile(c *fiber.Ctx) error {
 		return c.Status(500).JSON(fiber.Map{"error": "Failed to save file: " + err.Error()})
 	}
 
-	bagIDBytes, err := s.tonSvc.CreateBag(c.Context(), localPath)
+	absPath, _ := filepath.Abs(localPath)
+	bagIDBytes, err := s.tonSvc.CreateBag(c.Context(), absPath)
 	if err != nil {
 		return c.Status(500).JSON(fiber.Map{"error": "TON CreateBag failed: " + err.Error()})
 	}
@@ -189,15 +190,35 @@ func (s *AdminServer) restoreFile(c *fiber.Ctx) error {
 		return c.Status(500).JSON(fiber.Map{"error": "Invalid BagID in DB"})
 	}
 
+	jobID, err := s.db.StartDownloadJob(c.Context(), id)
+	if err != nil {
+		return c.Status(500).JSON(fiber.Map{"error": "DB Error: " + err.Error()})
+	}
+
 	go func() {
+		log.Printf("📥 [Job %d] Restore started for %s", jobID, file.ObjectKey)
+		
 		if err := s.tonSvc.DownloadBag(c.Context(), bagBytes); err != nil {
-			log.Printf("Background restore error for file %d: %v", id, err)
+			log.Printf("❌ Restore init failed: %v", err)
+			s.db.FinishDownloadJob(c.Context(), jobID, false, err.Error())
+			return
+		}
+
+		_, err := s.tonSvc.WaitForFile(c.Context(), bagBytes, file.ObjectKey)
+		
+		if err == nil {
+			log.Printf("✅ [Job %d] Restore success: %s", jobID, file.ObjectKey)
+			s.db.FinishDownloadJob(c.Context(), jobID, true, "")
+		} else {
+			log.Printf("⚠️ [Job %d] Restore failed (timeout): %v", jobID, err)
+			s.db.FinishDownloadJob(c.Context(), jobID, false, err.Error())
 		}
 	}()
 
 	return c.JSON(fiber.Map{
 		"status":  "restore_started",
-		"message": "Server is downloading file from TON network. Please wait.",
+		"job_id":  jobID,
+		"message": "Downloading from TON network...",
 		"bag_id":  file.BagID,
 	})
 }
@@ -234,11 +255,15 @@ func (s *AdminServer) manualReplicate(c *fiber.Ctx) error {
 		ProviderAddr: newProvider,
 		ContractAddr: contractAddr,
 		BalanceNano:  amount.Nano().Int64(),
-		Status:       "active",
+		Status:       "pending", // ИСПРАВЛЕНО: Pending (ждем проверки аудитора)
 	}
 	s.db.RegisterContract(c.Context(), newC)
 
-	return c.JSON(fiber.Map{"status": "hired", "provider": newProvider, "contract": contractAddr})
+	return c.JSON(fiber.Map{
+		"status": "hired_pending", 
+		"provider": newProvider, 
+		"contract": contractAddr,
+	})
 }
 
 func (s *AdminServer) auditContract(c *fiber.Ctx) error {
@@ -265,17 +290,14 @@ func (s *AdminServer) withdrawContract(c *fiber.Ctx) error {
 		return c.Status(404).JSON(fiber.Map{"error": "Contract not found"})
 	}
 
-	bagBytes, err := hex.DecodeString(contr.BagID)
-	if err != nil {
-		return c.Status(500).JSON(fiber.Map{"error": "Invalid BagID in DB"})
-	}
-
-	txHash, err := s.tonSvc.WithdrawAllFunds(c.Context(), bagBytes)
+	txHash, err := s.tonSvc.RemoveProvider(c.Context(), contr.BagID, contr.ProviderAddr)
 	if err != nil {
 		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
 	}
 
-	return c.JSON(fiber.Map{"status": "success", "tx_hash": txHash})
+	s.db.MarkContractFailed(c.Context(), cid)
+
+	return c.JSON(fiber.Map{"status": "removed", "tx_hash": txHash})
 }
 
 func (s *AdminServer) getFileStats(c *fiber.Ctx) error {
@@ -286,12 +308,48 @@ func (s *AdminServer) getFileStats(c *fiber.Ctx) error {
 	}
 
 	bagBytes, _ := hex.DecodeString(file.BagID)
+	
 	speed, total, err := s.tonSvc.GetTorrentStats(bagBytes)
 	
+	tor := s.tonSvc.GetStorage().GetTorrent(bagBytes)
+	peers := 0
+	downloaded := uint64(0)
+	completed := false
+	active := false
+
+	if tor != nil {
+		peers = len(tor.GetPeers())
+		active, _ = tor.IsActive()
+		
+		if tor.Info != nil {
+			mask := tor.PiecesMask()
+			piecesCount := 0
+			for _, b := range mask {
+				piecesCount += bits.OnesCount8(b)
+			}
+			
+			downloaded = uint64(piecesCount) * uint64(tor.Info.PieceSize)
+			
+			fileSizeUint := uint64(file.SizeBytes)
+
+			if downloaded > fileSizeUint { 
+				downloaded = fileSizeUint 
+			}
+			
+			if downloaded == fileSizeUint { 
+				completed = true 
+			}
+		}
+	}
+
 	return c.JSON(fiber.Map{
-		"upload_speed": speed,
+		"upload_speed":   speed,
 		"uploaded_total": total,
-		"file_size": file.SizeBytes,
+		"file_size":      file.SizeBytes,
+		"peers":          peers,
+		"active":         active,
+		"downloaded":     downloaded,
+		"completed":      completed,
 	})
 }
 
@@ -316,7 +374,6 @@ func (s *AdminServer) deleteFile(c *fiber.Ctx) error {
 		return c.Status(500).JSON(fiber.Map{"error": "Failed to delete files: " + err.Error()})
 	}
 
-	
 	log.Printf("🗑️ File %s (ID: %d) deleted via API", file.BagID, id)
 
 	return c.JSON(fiber.Map{

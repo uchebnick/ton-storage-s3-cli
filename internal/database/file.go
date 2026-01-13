@@ -91,13 +91,12 @@ func (db *DB) GetFilesReadyForCleaning(ctx context.Context, cutoffTime time.Time
 	query := `
 		SELECT f.id, f.bucket_name, f.object_key, f.bag_id, f.size_bytes, f.target_replicas, f.status, f.created_at
 		FROM files f
-		JOIN contracts c ON f.id = c.file_id
+		-- Проверяем, что файл НЕ скачивается прямо сейчас (через таблицу downloads)
+		LEFT JOIN downloads d ON f.id = d.file_id AND d.status = 'running'
 		WHERE f.created_at < $1
-		  AND f.id % $2 = $3 -- Шардирование по ID файла
-		  AND c.status = 'active'
-		  AND c.last_check > NOW() - INTERVAL '30 minutes'
-		GROUP BY f.id
-		HAVING COUNT(c.id) >= f.target_replicas
+		  AND f.id % $2 = $3
+		  AND f.status = 'active'
+		  AND d.id IS NULL
 		ORDER BY f.created_at ASC
 		LIMIT $4
 	`
@@ -120,4 +119,58 @@ func (db *DB) GetFilesReadyForCleaning(ctx context.Context, cutoffTime time.Time
 		result = append(result, f)
 	}
 	return result, nil
+}
+
+func (db *DB) DeleteFile(ctx context.Context, bucketName, objectKey string) error {
+	_, err := db.pool.Exec(ctx, `
+		DELETE FROM files 
+		WHERE bucket_name = $1 AND object_key = $2
+	`, bucketName, objectKey)
+	return err
+}
+
+func (db *DB) GetFileMeta(ctx context.Context, bucketName, objectKey string) (*File, error) {
+	f := &File{}
+	err := db.pool.QueryRow(ctx, `
+		SELECT id, bucket_name, object_key, bag_id, size_bytes, target_replicas, status, created_at
+		FROM files 
+		WHERE bucket_name = $1 AND object_key = $2
+	`, bucketName, objectKey).Scan(
+		&f.ID, &f.BucketName, &f.ObjectKey, &f.BagID, &f.SizeBytes, 
+		&f.TargetReplicas, &f.Status, &f.CreatedAt,
+	)
+	if err != nil {
+		return nil, err
+	}
+	return f, nil
+}
+
+func (db *DB) UpgradeFileStatusIfNeeded(ctx context.Context, fileID int64) error {
+	_, err := db.pool.Exec(ctx, `
+		UPDATE files f
+		SET status = 'active'
+		WHERE f.id = $1
+		  AND f.status = 'pending'
+		  AND (
+			SELECT COUNT(*) 
+			FROM contracts c 
+			WHERE c.file_id = f.id AND c.status = 'active'
+		  ) >= f.target_replicas
+	`, fileID)
+	return err
+}
+
+func (db *DB) DowngradeFileStatusIfNeeded(ctx context.Context, fileID int64) error {
+	_, err := db.pool.Exec(ctx, `
+		UPDATE files f
+		SET status = 'pending'
+		WHERE f.id = $1
+		  AND f.status = 'active'
+		  AND (
+			SELECT COUNT(*) 
+			FROM contracts c 
+			WHERE c.file_id = f.id AND c.status = 'active'
+		  ) < f.target_replicas
+	`, fileID)
+	return err
 }

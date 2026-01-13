@@ -2,7 +2,6 @@ package s3
 
 import (
 	"context"
-	"crypto/md5"
 	"encoding/hex"
 	"fmt"
 	"io"
@@ -140,10 +139,33 @@ func (b *TonBackend) HeadObject(bucketName, objectName string) (*gofakes3.Object
 	}, nil
 }
 
+type JobTrackingReader struct {
+	io.ReadCloser
+	db      *database.DB
+	jobID   int64
+}
+
+func (r *JobTrackingReader) Close() error {
+	r.db.FinishDownloadJob(context.Background(), r.jobID, true, "")
+	
+	return r.ReadCloser.Close()
+}
+
 func (b *TonBackend) GetObject(bucketName, objectName string, rangeRequest *gofakes3.ObjectRangeRequest) (*gofakes3.Object, error) {
-	fMeta, err := b.db.GetFileMeta(context.Background(), bucketName, objectName)
+	ctx := context.Background()
+
+	fMeta, err := b.db.GetFileMeta(ctx, bucketName, objectName)
 	if err != nil {
 		return nil, gofakes3.KeyNotFound(objectName)
+	}
+
+	jobID, err := b.db.StartDownloadJob(ctx, fMeta.ID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to register download job: %v", err)
+	}
+
+	failJob := func(msg string) {
+		b.db.FinishDownloadJob(ctx, jobID, false, msg)
 	}
 
 	bagBytes, _ := hex.DecodeString(fMeta.BagID)
@@ -157,12 +179,14 @@ func (b *TonBackend) GetObject(bucketName, objectName string, rangeRequest *gofa
 	} else if _, err := os.Stat(downloadPath); err == nil {
 		finalPath = downloadPath
 	} else {
-
-		if err := b.ton.DownloadBag(context.Background(), bagBytes); err != nil {
+		if err := b.ton.DownloadBag(ctx, bagBytes); err != nil {
+			failJob(err.Error())
 			return nil, fmt.Errorf("TON download init failed: %v", err)
 		}
-		path, err := b.ton.WaitForFile(context.Background(), bagBytes, objectName)
+		
+		path, err := b.ton.WaitForFile(ctx, bagBytes, objectName)
 		if err != nil {
+			failJob("Wait timeout: " + err.Error())
 			return nil, fmt.Errorf("timeout restoring file from TON: %v", err)
 		}
 		finalPath = path
@@ -170,18 +194,50 @@ func (b *TonBackend) GetObject(bucketName, objectName string, rangeRequest *gofa
 
 	f, err := os.Open(finalPath)
 	if err != nil {
+		failJob("File open error: " + err.Error())
 		return nil, gofakes3.ErrInternal
 	}
 	stat, _ := f.Stat()
 
+	var readerToWrap io.ReadCloser = f
+	var responseRange *gofakes3.ObjectRange
+
+	if rangeRequest != nil {
+		if _, err := f.Seek(rangeRequest.Start, io.SeekStart); err != nil {
+			f.Close()
+			failJob("Seek error")
+			return nil, err
+		}
+		
+		length := rangeRequest.End - rangeRequest.Start + 1
+		
+		readerToWrap = &struct {
+			io.Reader
+			io.Closer
+		}{
+			Reader: io.LimitReader(f, length),
+			Closer: f,
+		}
+
+		responseRange = &gofakes3.ObjectRange{
+			Start:  rangeRequest.Start,
+			Length: length,
+		}
+	}
+
 	return &gofakes3.Object{
-		Name:		objectName,
-		Size:		stat.Size(),
-		Hash:		bagBytes,
-		Contents:	f,
+		Name:     objectName,
+		Size:     stat.Size(), 
+		Hash:     bagBytes,
+		Contents: &JobTrackingReader{
+			ReadCloser: readerToWrap,
+			db:         b.db,
+			jobID:      jobID,
+		},
 		Metadata: map[string]string{
 			"Last-Modified": fMeta.CreatedAt.Format(time.RFC1123),
 		},
+		Range: responseRange,
 	}, nil
 }
 
@@ -193,12 +249,19 @@ func (b *TonBackend) PutObject(
 	conditions *gofakes3.PutConditions,
 ) (result gofakes3.PutObjectResult, err error) {
 
-	exists, err := b.db.BucketExists(context.Background(), bucketName)
+	ctx := context.Background()
+
+	exists, err := b.db.BucketExists(ctx, bucketName)
 	if err != nil {
 		return result, err
 	}
 	if !exists {
 		return result, gofakes3.BucketNotFound(bucketName)
+	}
+
+	_, err = b.db.GetFileMeta(ctx, bucketName, objectName)
+	if err == nil {
+		b.DeleteObject(bucketName, objectName)
 	}
 
 	localPath := filepath.Join(b.rootDir, objectName)
@@ -211,18 +274,15 @@ func (b *TonBackend) PutObject(
 		return result, err
 	}
 
-	hasher := md5.New()
-	writer := io.MultiWriter(tmpFile, hasher)
-
 	if size == -1 {
-		copied, err := io.Copy(writer, input)
+		copied, err := io.Copy(tmpFile, input)
 		if err != nil {
 			tmpFile.Close()
 			return result, err
 		}
 		size = copied
 	} else {
-		if _, err := io.CopyN(writer, input, size); err != nil {
+		if _, err := io.CopyN(tmpFile, input, size); err != nil {
 			tmpFile.Close()
 			return result, err
 		}
@@ -230,7 +290,7 @@ func (b *TonBackend) PutObject(
 	tmpFile.Close()
 
 	pathForTon := strings.ReplaceAll(localPath, "\\", "/")
-	bagIDBytes, err := b.ton.CreateBag(context.Background(), pathForTon)
+	bagIDBytes, err := b.ton.CreateBag(ctx, pathForTon)
 	if err != nil {
 		return result, fmt.Errorf("TON create bag failed: %w", err)
 	}
@@ -244,15 +304,15 @@ func (b *TonBackend) PutObject(
 	}
 
 	file := &database.File{
-		BucketName:	bucketName,
-		ObjectKey:	objectName,
-		BagID:		bagIDHex,
-		SizeBytes:	size,
-		TargetReplicas:	targetReplicas,
-		Status:		"pending",
+		BucketName:     bucketName,
+		ObjectKey:      objectName,
+		BagID:          bagIDHex,
+		SizeBytes:      size,
+		TargetReplicas: targetReplicas,
+		Status:         "pending",
 	}
 
-	if _, err := b.db.CreateFile(context.Background(), file); err != nil {
+	if _, err := b.db.CreateFile(ctx, file); err != nil {
 		return result, fmt.Errorf("DB error: %w", err)
 	}
 
@@ -263,11 +323,7 @@ func (b *TonBackend) CopyObject(srcBucket, srcKey, dstBucket, dstKey string, met
 	return gofakes3.CopyObject(b, srcBucket, srcKey, dstBucket, dstKey, meta)
 }
 
-func (b *TonBackend) DeleteObject(bucketName, objectName string) (result gofakes3.ObjectDeleteResult, err error) {
-	localPath := filepath.Join(b.rootDir, objectName)
-	os.Remove(localPath)
-	return result, nil
-}
+
 
 func (b *TonBackend) DeleteMulti(bucketName string, objects ...string) (result gofakes3.MultiDeleteResult, err error) {
 	for _, obj := range objects {
@@ -279,5 +335,25 @@ func (b *TonBackend) DeleteMulti(bucketName string, objects ...string) (result g
 			result.Deleted = append(result.Deleted, gofakes3.ObjectID{Key: obj})
 		}
 	}
+	return result, nil
+}
+
+func (b *TonBackend) DeleteObject(bucketName, objectName string) (result gofakes3.ObjectDeleteResult, err error) {
+	fMeta, err := b.db.GetFileMeta(context.Background(), bucketName, objectName)
+	if err != nil {
+		return result, nil
+	}
+
+	bagBytes, _ := hex.DecodeString(fMeta.BagID)
+
+	if err := b.ton.DeleteLocalFile(bagBytes); err != nil {
+		fmt.Printf("Warning: failed to delete local files for %s: %v\n", objectName, err)
+	}
+
+
+	if err := b.db.DeleteFile(context.Background(), bucketName, objectName); err != nil {
+		return result, err
+	}
+
 	return result, nil
 }

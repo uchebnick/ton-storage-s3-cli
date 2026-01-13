@@ -40,7 +40,6 @@ func RunCleanerWorker(ctx context.Context, workerID int, totalWorkers int, db *d
 				if err != nil {
 					log.Printf("[Cleaner %d] ❌ Failed to offload %s: %v", workerID, f.ObjectKey, err)
 				} else {
-					// log.Printf("[Cleaner %d] 🧹 Offloaded: %s", workerID, f.ObjectKey)
 				}
 			}
 		}

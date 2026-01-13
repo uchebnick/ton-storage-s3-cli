@@ -44,14 +44,5 @@ func (db *DB) ListBuckets(ctx context.Context) ([]Bucket, error) {
 	return result, nil
 }
 
-func (db *DB) GetFileMeta(ctx context.Context, bucket, key string) (*File, error) {
-	f := &File{}
-	err := db.pool.QueryRow(ctx, `
-		SELECT id, bucket_name, object_key, bag_id, size_bytes, target_replicas, status, created_at 
-		FROM files WHERE bucket_name=$1 AND object_key=$2
-	`, bucket, key).Scan(&f.ID, &f.BucketName, &f.ObjectKey, &f.BagID, &f.SizeBytes, &f.TargetReplicas, &f.Status, &f.CreatedAt)
-	if err != nil {
-		return nil, err
-	}
-	return f, nil
-}
+
+

@@ -16,7 +16,7 @@ CREATE TABLE files (
                        bag_id VARCHAR(64) NOT NULL,
                        size_bytes BIGINT NOT NULL,
                        target_replicas INT DEFAULT 3,
-                       status VARCHAR(50) DEFAULT 'pending',
+                       status VARCHAR(50) DEFAULT 'pending', -- 'pending', 'active'
                        created_at TIMESTAMP DEFAULT NOW(),
                        UNIQUE(bucket_name, object_key)
 );
@@ -34,10 +34,20 @@ CREATE TABLE contracts (
                            provider_addr VARCHAR(255) NOT NULL,
                            contract_addr VARCHAR(255) NOT NULL,
                            balance_nano_ton BIGINT DEFAULT 0,
-                           status VARCHAR(50) DEFAULT 'active',
+                           status VARCHAR(50) DEFAULT 'pending', -- 'pending', 'active', 'failed'
                            last_check TIMESTAMP DEFAULT NOW(),
                            created_at TIMESTAMP DEFAULT NOW()
 );
 
+CREATE TABLE downloads (
+    id SERIAL PRIMARY KEY,
+    file_id BIGINT NOT NULL REFERENCES files(id) ON DELETE CASCADE,
+    started_at TIMESTAMP DEFAULT NOW(),
+    finished_at TIMESTAMP,
+    status VARCHAR(20) DEFAULT 'running', -- 'running', 'completed', 'failed'
+    error_msg TEXT
+);
+
+CREATE INDEX idx_downloads_active ON downloads(file_id) WHERE status = 'running';
 CREATE INDEX idx_files_status ON files(status);
 CREATE INDEX idx_contracts_status_check ON contracts(status, last_check);

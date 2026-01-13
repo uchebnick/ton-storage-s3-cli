@@ -6,16 +6,12 @@ services:
     container_name: ton-storage-s3
     restart: unless-stopped
     
-    # !!! ВАЖНО: Режим Host решает проблемы с P2P соединением !!!
     network_mode: "host"
     
-    # В режиме host порты прописывать не нужно, они открываются сами.
-    # Но в фаерволе (UFW) они должны быть открыты!
 
     environment:
       - SERVER_PORT=:8080
       
-      # Подключаемся локально, т.к. мы в режиме host
       - DB_URL=postgres://user:password@127.0.0.1:5432/ton_storage?sslmode=disable
       
       - TON_CONFIG_URL=https://ton.org/global.config.json
@@ -26,10 +22,8 @@ services:
       - AUDITOR_WORKERS=3
       - DEFAULT_REPLICAS=3
       
-      # Секреты
       - WALLET_SEED=${WALLET_SEED}
       
-      # !!! ВАЖНО: Передаем внешний IP, чтобы сообщить его в DHT !!!
       - EXTERNAL_IP=${EXTERNAL_IP}
       
     volumes:
@@ -39,7 +33,6 @@ services:
       - postgres
 
   postgres:
-    # Используем зеркало Amazon, чтобы Docker Hub не забанил за частые скачивания
     image: public.ecr.aws/docker/library/postgres:15-alpine
     container_name: ton-postgres
     restart: always
@@ -49,10 +42,7 @@ services:
       POSTGRES_DB: ton_storage
     volumes:
       - pg_data:/var/lib/postgresql/data
-      # Схему можно не маунтить, если у нас есть InitSchema в Go-коде
-      # - ./schema.sql:/docker-entrypoint-initdb.d/init.sql
     ports:
-      # Пробрасываем порт, чтобы app видел базу через 127.0.0.1
       - "5432:5432"
 
 volumes:

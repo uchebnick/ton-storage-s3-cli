@@ -9,20 +9,16 @@ import (
 )
 
 type Config struct {
-	// База данных
 	DatabaseURL	string
 
-	// Настройки TON
 	TonConfigURL	string	// Ссылка на global.config.json
 	WalletSeed	string	// Сид фраза кошелька (24 слова)
 	InternalDBPath	string	// Путь к leveldb самого tonutils-storage
 	DownloadsPath	string	// Путь, куда скачиваются файлы
 
-	// Настройки S3 Шлюза
 	ServerPort	string
 	DefaultReplicas	int
 
-	// Настройки Демонов
 	ReplicatorWorkers	int
 	AuditorWorkers		int
 	PingerWorkers		int
