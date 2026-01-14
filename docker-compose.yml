@@ -16,8 +16,11 @@ services:
       - INTERNAL_DB_PATH=/root/var/ton-db
       - DOWNLOADS_PATH=/root/var/downloads
       
-      - REPLICATOR_WORKERS=5
-      - AUDITOR_WORKERS=3
+      - REPLICATOR_WORKERS=1
+      - AUDITOR_WORKERS=2
+      - CLEANER_WORKERS=1
+      - PINGER_WORKERS=1
+
       - DEFAULT_REPLICAS=3
       
       - WALLET_SEED=${WALLET_SEED}
