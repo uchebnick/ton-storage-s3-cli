@@ -1,13 +1,14 @@
 package api
 
 import (
+	"context"
 	"encoding/hex"
 	"fmt"
 	"log"
+	"math/bits"
 	"os"
 	"path/filepath"
 	"strconv"
-	"math/bits"
 
 	"ton-storage-s3-cli/internal/database"
 	"ton-storage-s3-cli/internal/ton"
@@ -196,22 +197,23 @@ func (s *AdminServer) restoreFile(c *fiber.Ctx) error {
 	}
 
 	go func() {
+		ctx := context.Background()
 		log.Printf("📥 [Job %d] Restore started for %s", jobID, file.ObjectKey)
 		
-		if err := s.tonSvc.DownloadBag(c.Context(), bagBytes); err != nil {
+		if err := s.tonSvc.DownloadBag(ctx, bagBytes); err != nil {
 			log.Printf("❌ Restore init failed: %v", err)
 			s.db.FinishDownloadJob(c.Context(), jobID, false, err.Error())
 			return
 		}
 
-		_, err := s.tonSvc.WaitForFile(c.Context(), bagBytes, file.ObjectKey)
+		_, err := s.tonSvc.WaitForFile(ctx, bagBytes, file.ObjectKey)
 		
 		if err == nil {
 			log.Printf("✅ [Job %d] Restore success: %s", jobID, file.ObjectKey)
-			s.db.FinishDownloadJob(c.Context(), jobID, true, "")
+			s.db.FinishDownloadJob(ctx, jobID, true, "")
 		} else {
 			log.Printf("⚠️ [Job %d] Restore failed (timeout): %v", jobID, err)
-			s.db.FinishDownloadJob(c.Context(), jobID, false, err.Error())
+			s.db.FinishDownloadJob(ctx, jobID, false, err.Error())
 		}
 	}()
 
