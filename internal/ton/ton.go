@@ -52,7 +52,7 @@ func NewService(ctx context.Context, seedPhrase string, internalDBPath string, d
 		_, privKey, _ := ed25519.GenerateKey(nil)
 		cfg = &config.Config{
 			Key:           privKey,
-			ListenAddr:    "0.0.0.0:14321",
+			ListenAddr:    "0.0.0.0:17555",
 			DownloadsPath: downloadsPath,
 		}
 	}
@@ -98,7 +98,7 @@ func NewService(ctx context.Context, seedPhrase string, internalDBPath string, d
 		gateway.SetAddressList([]*adnlAddress.UDP{
 			{
 				IP:   ip,
-				Port: 14321,
+				Port: 17555,
 			},
 		})
 
