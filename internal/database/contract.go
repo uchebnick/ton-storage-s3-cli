@@ -1,8 +1,11 @@
 package database
 
-import "context"
+import (
+	"ton-storage-s3-cli/internal/models"
+	"context"
+)
 
-func (db *DB) RegisterContract(ctx context.Context, c *Contract) error {
+func (db *DB) RegisterContract(ctx context.Context, c *models.Contract) error {
 	_, err := db.pool.Exec(ctx, `
 		INSERT INTO contracts (file_id, provider_addr, contract_addr, balance_nano_ton, status)
 		VALUES ($1, $2, $3, $4, 'pending')
@@ -25,7 +28,7 @@ func (db *DB) UpdateContractCheck(ctx context.Context, contractID int64) error {
 	return err
 }
 
-func (db *DB) GetAllContracts(ctx context.Context, totalWorkers, workerID int) ([]ContractWithMeta, error) {
+func (db *DB) GetAllContracts(ctx context.Context, totalWorkers, workerID int) ([]models.ContractWithMeta, error) {
 	query := `
 		SELECT c.id, c.file_id, c.provider_addr, c.contract_addr, c.balance_nano_ton, c.last_check, f.bag_id
 		FROM contracts c
@@ -40,9 +43,9 @@ func (db *DB) GetAllContracts(ctx context.Context, totalWorkers, workerID int) (
 	}
 	defer rows.Close()
 
-	var result []ContractWithMeta
+	var result []models.ContractWithMeta
 	for rows.Next() {
-		var c ContractWithMeta
+		var c models.ContractWithMeta
 		if err := rows.Scan(&c.ID, &c.FileID, &c.ProviderAddr, &c.ContractAddr, &c.BalanceNano, &c.LastCheck, &c.BagID); err != nil {
 			return nil, err
 		}
@@ -51,7 +54,7 @@ func (db *DB) GetAllContracts(ctx context.Context, totalWorkers, workerID int) (
 	return result, nil
 }
 
-func (db *DB) GetActiveContracts(ctx context.Context, totalWorkers, workerID int) ([]ContractWithMeta, error) {
+func (db *DB) GetActiveContracts(ctx context.Context, totalWorkers, workerID int) ([]models.ContractWithMeta, error) {
 	query := `
 		SELECT c.id, c.file_id, c.provider_addr, c.contract_addr, c.balance_nano_ton, c.last_check, f.bag_id
 		FROM contracts c
@@ -68,9 +71,9 @@ func (db *DB) GetActiveContracts(ctx context.Context, totalWorkers, workerID int
 	}
 	defer rows.Close()
 
-	var result []ContractWithMeta
+	var result []models.ContractWithMeta
 	for rows.Next() {
-		var c ContractWithMeta
+		var c models.ContractWithMeta
 		if err := rows.Scan(&c.ID, &c.FileID, &c.ProviderAddr, &c.ContractAddr, &c.BalanceNano, &c.LastCheck, &c.BagID); err != nil {
 			return nil, err
 		}
@@ -79,7 +82,7 @@ func (db *DB) GetActiveContracts(ctx context.Context, totalWorkers, workerID int
 	return result, nil
 }
 
-func (db *DB) GetContractByBagID(ctx context.Context, bagID string) (*ContractWithMeta, error) {
+func (db *DB) GetContractByBagID(ctx context.Context, bagID string) (*models.ContractWithMeta, error) {
 	query := `
 		SELECT c.id, c.file_id, c.provider_addr, c.contract_addr, c.balance_nano_ton, c.last_check, f.bag_id
 		FROM contracts c
@@ -88,7 +91,7 @@ func (db *DB) GetContractByBagID(ctx context.Context, bagID string) (*ContractWi
 		ORDER BY c.id DESC
 		LIMIT 1
 	`
-	var c ContractWithMeta
+	var c models.ContractWithMeta
 	err := db.pool.QueryRow(ctx, query, bagID).Scan(
 		&c.ID, &c.FileID, &c.ProviderAddr, &c.ContractAddr, &c.BalanceNano, &c.LastCheck, &c.BagID,
 	)
@@ -98,14 +101,14 @@ func (db *DB) GetContractByBagID(ctx context.Context, bagID string) (*ContractWi
 	return &c, nil
 }
 
-func (db *DB) GetContractByID(ctx context.Context, id int64) (*ContractWithMeta, error) {
+func (db *DB) GetContractByID(ctx context.Context, id int64) (*models.ContractWithMeta, error) {
 	query := `
 		SELECT c.id, c.file_id, c.provider_addr, c.contract_addr, c.balance_nano_ton, c.last_check, f.bag_id
 		FROM contracts c
 		JOIN files f ON c.file_id = f.id
 		WHERE c.id = $1
 	`
-	var c ContractWithMeta
+	var c models.ContractWithMeta
 	err := db.pool.QueryRow(ctx, query, id).Scan(
 		&c.ID, &c.FileID, &c.ProviderAddr, &c.ContractAddr, &c.BalanceNano, &c.LastCheck, &c.BagID,
 	)
@@ -115,7 +118,7 @@ func (db *DB) GetContractByID(ctx context.Context, id int64) (*ContractWithMeta,
 	return &c, nil
 }
 
-func (db *DB) GetFileContracts(ctx context.Context, fileID int64) ([]Contract, error) {
+func (db *DB) GetFileContracts(ctx context.Context, fileID int64) ([]models.Contract, error) {
 	rows, err := db.pool.Query(ctx, `
 		SELECT id, file_id, provider_addr, contract_addr, balance_nano_ton, status, last_check
 		FROM contracts WHERE file_id=$1
@@ -125,9 +128,9 @@ func (db *DB) GetFileContracts(ctx context.Context, fileID int64) ([]Contract, e
 	}
 	defer rows.Close()
 
-	var result []Contract
+	var result []models.Contract
 	for rows.Next() {
-		var c Contract
+		var c models.Contract
 		if err := rows.Scan(&c.ID, &c.FileID, &c.ProviderAddr, &c.ContractAddr, &c.BalanceNano, &c.Status, &c.LastCheck); err != nil {
 			return nil, err
 		}
@@ -136,7 +139,7 @@ func (db *DB) GetFileContracts(ctx context.Context, fileID int64) ([]Contract, e
 	return result, nil
 }
 
-func (db *DB) GetContractsForAudit(ctx context.Context, totalWorkers, workerID int) ([]ContractWithMeta, error) {
+func (db *DB) GetContractsForAudit(ctx context.Context, totalWorkers, workerID int) ([]models.ContractWithMeta, error) {
 	query := `
 		SELECT c.id, c.file_id, c.provider_addr, c.contract_addr, c.balance_nano_ton, c.last_check, f.bag_id, c.status
 		FROM contracts c
@@ -153,9 +156,9 @@ func (db *DB) GetContractsForAudit(ctx context.Context, totalWorkers, workerID i
 	}
 	defer rows.Close()
 
-	var result []ContractWithMeta
+	var result []models.ContractWithMeta
 	for rows.Next() {
-		var c ContractWithMeta
+		var c models.ContractWithMeta
 		if err := rows.Scan(&c.ID, &c.FileID, &c.ProviderAddr, &c.ContractAddr, &c.BalanceNano, &c.LastCheck, &c.BagID, &c.Status); err != nil {
 			return nil, err
 		}

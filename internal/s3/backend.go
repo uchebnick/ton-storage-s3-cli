@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"ton-storage-s3-cli/internal/database"
+	"ton-storage-s3-cli/internal/models"
 	"ton-storage-s3-cli/internal/ton"
 
 	"github.com/johannesboyne/gofakes3"
@@ -303,7 +304,7 @@ func (b *TonBackend) PutObject(
 		}
 	}
 
-	file := &database.File{
+	file := &models.File{
 		BucketName:     bucketName,
 		ObjectKey:      objectName,
 		BagID:          bagIDHex,

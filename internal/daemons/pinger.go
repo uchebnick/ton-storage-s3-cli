@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"ton-storage-s3-cli/internal/database"
+	"ton-storage-s3-cli/internal/models"
 	"ton-storage-s3-cli/internal/ton"
 )
 
@@ -45,7 +46,7 @@ func RunPingerWorker(ctx context.Context, workerID int, totalWorkers int, db *da
 	}
 }
 
-func processPing(ctx context.Context, workerID int, tonSvc *ton.Service, c database.ContractWithMeta) {
+func processPing(ctx context.Context, workerID int, tonSvc *ton.Service, c models.ContractWithMeta) {
 	logPrefix := fmt.Sprintf("[Pinger %d | %s]", workerID, c.ProviderAddr)
 
 	bagID, err := hex.DecodeString(c.BagID)

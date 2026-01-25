@@ -10,6 +10,7 @@ import (
 
 	"ton-storage-s3-cli/internal/database"
 	"ton-storage-s3-cli/internal/ton"
+	"ton-storage-s3-cli/internal/models"
 
 	"github.com/xssnick/tonutils-go/tlb"
 )
@@ -50,7 +51,7 @@ func RunReplicatorWorker(ctx context.Context, workerID int, totalWorkers int, db
 	}
 }
 
-func processFile(ctx context.Context, workerID int, db *database.DB, tonSvc *ton.Service, f database.FileWithStatus, rng *rand.Rand) {
+func processFile(ctx context.Context, workerID int, db *database.DB, tonSvc *ton.Service, f models.FileWithStatus, rng *rand.Rand) {
 	needed := f.TargetReplicas - f.ActiveReplicas
 	if needed <= 0 {
 		return
@@ -87,7 +88,7 @@ func processFile(ctx context.Context, workerID int, db *database.DB, tonSvc *ton
 			continue
 		}
 
-		newContract := &database.Contract{
+		newContract := &models.Contract{
 			FileID:		f.ID,
 			ProviderAddr:	providerAddr,
 			ContractAddr:	contractAddr,

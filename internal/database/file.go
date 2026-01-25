@@ -3,10 +3,12 @@ package database
 import (
 	"context"
 	"time"
+
+	"ton-storage-s3-cli/internal/models"
 )
 
 
-func (db *DB) CreateFile(ctx context.Context, f *File) (int64, error) {
+func (db *DB) CreateFile(ctx context.Context, f *models.File) (int64, error) {
 	var id int64
 	err := db.pool.QueryRow(ctx, `
 		INSERT INTO files (bucket_name, object_key, bag_id, size_bytes, target_replicas, status)
@@ -16,7 +18,7 @@ func (db *DB) CreateFile(ctx context.Context, f *File) (int64, error) {
 	return id, err
 }
 
-func (db *DB) GetFilesNeedingReplication(ctx context.Context, totalWorkers, workerID int) ([]FileWithStatus, error) {
+func (db *DB) GetFilesNeedingReplication(ctx context.Context, totalWorkers, workerID int) ([]models.FileWithStatus, error) {
 	query := `
 		SELECT 
 			f.id, f.bucket_name, f.object_key, f.bag_id, f.target_replicas, 
@@ -37,9 +39,9 @@ func (db *DB) GetFilesNeedingReplication(ctx context.Context, totalWorkers, work
 	}
 	defer rows.Close()
 
-	var result []FileWithStatus
+	var result []models.FileWithStatus
 	for rows.Next() {
-		var item FileWithStatus
+		var item models.FileWithStatus
 		if err := rows.Scan(
 			&item.ID, &item.BucketName, &item.ObjectKey, &item.BagID, &item.TargetReplicas,
 			&item.ActiveReplicas, &item.UsedProviders,
@@ -51,7 +53,7 @@ func (db *DB) GetFilesNeedingReplication(ctx context.Context, totalWorkers, work
 	return result, nil
 }
 
-func (db *DB) ListFiles(ctx context.Context, limit, offset int) ([]File, error) {
+func (db *DB) ListFiles(ctx context.Context, limit, offset int) ([]models.File, error) {
 	rows, err := db.pool.Query(ctx, `
 		SELECT id, bucket_name, object_key, bag_id, size_bytes, target_replicas, status, created_at 
 		FROM files 
@@ -63,9 +65,9 @@ func (db *DB) ListFiles(ctx context.Context, limit, offset int) ([]File, error) 
 	}
 	defer rows.Close()
 
-	var result []File
+	var result []models.File
 	for rows.Next() {
-		var f File
+		var f models.File
 
 		if err := rows.Scan(&f.ID, &f.BucketName, &f.ObjectKey, &f.BagID, &f.SizeBytes, &f.TargetReplicas, &f.Status, &f.CreatedAt); err != nil {
 			return nil, err
@@ -75,8 +77,8 @@ func (db *DB) ListFiles(ctx context.Context, limit, offset int) ([]File, error) 
 	return result, nil
 }
 
-func (db *DB) GetFileByID(ctx context.Context, id int64) (*File, error) {
-	f := &File{}
+func (db *DB) GetFileByID(ctx context.Context, id int64) (*models.File, error) {
+	f := &models.File{}
 	err := db.pool.QueryRow(ctx, `
 		SELECT id, bucket_name, object_key, bag_id, size_bytes, target_replicas, status, created_at
 		FROM files WHERE id=$1
@@ -87,7 +89,7 @@ func (db *DB) GetFileByID(ctx context.Context, id int64) (*File, error) {
 	return f, nil
 }
 
-func (db *DB) GetFilesReadyForCleaning(ctx context.Context, interval time.Duration, totalWorkers, workerID, limit int) ([]File, error) {
+func (db *DB) GetFilesReadyForCleaning(ctx context.Context, interval time.Duration, totalWorkers, workerID, limit int) ([]models.File, error) {
 	query := `
 		SELECT f.id, f.bucket_name, f.object_key, f.bag_id, f.size_bytes, f.target_replicas, f.status, f.created_at
 		FROM files f
@@ -106,9 +108,9 @@ func (db *DB) GetFilesReadyForCleaning(ctx context.Context, interval time.Durati
 	}
 	defer rows.Close()
 
-	var result []File
+	var result []models.File
 	for rows.Next() {
-		var f File
+		var f models.File
 		if err := rows.Scan(
 			&f.ID, &f.BucketName, &f.ObjectKey, &f.BagID, &f.SizeBytes, 
 			&f.TargetReplicas, &f.Status, &f.CreatedAt,
@@ -128,8 +130,8 @@ func (db *DB) DeleteFile(ctx context.Context, bucketName, objectKey string) erro
 	return err
 }
 
-func (db *DB) GetFileMeta(ctx context.Context, bucketName, objectKey string) (*File, error) {
-	f := &File{}
+func (db *DB) GetFileMeta(ctx context.Context, bucketName, objectKey string) (*models.File, error) {
+	f := &models.File{}
 	err := db.pool.QueryRow(ctx, `
 		SELECT id, bucket_name, object_key, bag_id, size_bytes, target_replicas, status, created_at
 		FROM files 

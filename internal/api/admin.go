@@ -12,6 +12,7 @@ import (
 
 	"ton-storage-s3-cli/internal/database"
 	"ton-storage-s3-cli/internal/ton"
+	"ton-storage-s3-cli/internal/models"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/cors"
@@ -135,7 +136,7 @@ func (s *AdminServer) uploadFile(c *fiber.Ctx) error {
 	}
 	bagIDHex := hex.EncodeToString(bagIDBytes)
 
-	newFile := &database.File{
+	newFile := &models.File{
 		BucketName:     bucket,
 		ObjectKey:      fileHeader.Filename,
 		BagID:          bagIDHex,
@@ -202,7 +203,7 @@ func (s *AdminServer) restoreFile(c *fiber.Ctx) error {
 		
 		if err := s.tonSvc.DownloadBag(ctx, bagBytes); err != nil {
 			log.Printf("❌ Restore init failed: %v", err)
-			s.db.FinishDownloadJob(c.Context(), jobID, false, err.Error())
+			s.db.FinishDownloadJob(ctx, jobID, false, err.Error())
 			return
 		}
 
@@ -252,7 +253,7 @@ func (s *AdminServer) manualReplicate(c *fiber.Ctx) error {
 		return c.Status(500).JSON(fiber.Map{"error": "Hire failed: " + err.Error()})
 	}
 
-	newC := &database.Contract{
+	newC := &models.Contract{
 		FileID:       f.ID,
 		ProviderAddr: newProvider,
 		ContractAddr: contractAddr,

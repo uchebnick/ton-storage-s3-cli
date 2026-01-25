@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"ton-storage-s3-cli/internal/database"
+	"ton-storage-s3-cli/internal/models"
 	"ton-storage-s3-cli/internal/ton"
 )
 
@@ -42,7 +43,7 @@ func RunAuditorWorker(ctx context.Context, workerID int, totalWorkers int, db *d
 	}
 }
 
-func processContract(ctx context.Context, workerID int, db *database.DB, tonSvc *ton.Service, c database.ContractWithMeta) {
+func processContract(ctx context.Context, workerID int, db *database.DB, tonSvc *ton.Service, c models.ContractWithMeta) {
 	logPrefix := fmt.Sprintf("[Auditor %d | %s]", workerID, c.ProviderAddr)
 
 	report, err := tonSvc.AuditProvider(ctx, c.BagID, c.ProviderAddr)
