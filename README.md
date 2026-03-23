@@ -1,4 +1,4 @@
-# 💎 TON Storage S3 Gateway
+# TON Storage S3 Gateway
 
 **TON Storage S3 Gateway** — это self-hosted шлюз, который позволяет загружать файлы в децентрализованную сеть [TON Storage](https://ton.org/en/ton-storage), используя стандартный **AWS S3 API**.
 
@@ -8,7 +8,7 @@
 ![Go](https://img.shields.io/badge/go-1.25.3-cyan)
 ![TON](https://img.shields.io/badge/network-TON-blue)
 
-## 🚀 Возможности
+## Возможности
 
 *   **S3 Совместимость:** Работает с `aws-cli`, `minio-client`, `rclone` и любыми S3 SDK.
 *   **Авто-репликация:** Автоматически нанимает провайдеров хранения через смарт-контракты.
@@ -18,7 +18,7 @@
     *   **Replicator:** Нанимает новых провайдеров, если надежность падает.
     *   **Pinger:** Поддерживает ADNL-туннели открытыми.
 
-## 🛠 Установка
+## Установка
 
 ### Требования
 *   **Linux Server** (рекомендуется Ubuntu/Debian).
@@ -27,7 +27,7 @@
 *   **Открытый UDP и TCP порт:** 17555.
 
 
-## 📖 Использование
+## Использование
 
 ### Загрузка файла через CLI (AWS S3)
 ```bash
